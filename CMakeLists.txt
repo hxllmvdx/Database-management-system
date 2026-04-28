@@ -18,6 +18,10 @@ option(COURSEDB_ENABLE_WARNINGS_AS_ERRORS "Treat warnings as errors" OFF)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+file(GLOB_RECURSE COURSEDB_TEST_SOURCES CONFIGURE_DEPENDS
+    ${PROJECT_SOURCE_DIR}/tests/*_tests.cpp
+)
+
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
@@ -52,7 +56,7 @@ endif()
 
 include(FetchContent)
 
-if(COURSEDB_BUILD_TESTS)
+if(COURSEDB_BUILD_TESTS AND COURSEDB_TEST_SOURCES)
     FetchContent_Declare(
         googletest
         URL https://github.com/google/googletest/archive/refs/tags/v1.14.0.zip
@@ -69,7 +73,7 @@ if(COURSEDB_BUILD_APPS)
     add_subdirectory(apps)
 endif()
 
-if(COURSEDB_BUILD_TESTS)
+if(COURSEDB_BUILD_TESTS AND COURSEDB_TEST_SOURCES)
     enable_testing()
     add_subdirectory(tests)
 endif()

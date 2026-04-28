@@ -188,6 +188,7 @@ target_sources(coursedb_server
     PRIVATE
         server/database.cpp
         server/query_processor.cpp
+        server/query_result.cpp
         server/storage_service.cpp
         server/session_context.cpp
 )
