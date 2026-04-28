@@ -159,6 +159,39 @@ TEST_F(PageManagerTest, WritePageWithWrongSizeReturnsError) {
     EXPECT_FALSE(status.ok());
 }
 
+TEST_F(PageManagerTest, OpenRejectsFileWithMisalignedSize) {
+    {
+        std::ofstream file(file_path_, std::ios::binary);
+        ASSERT_TRUE(file.is_open());
+        file.put(static_cast<char>(0x7f));
+    }
+
+    db::PageManager manager = CreateManager();
+    db::Status status = manager.Open();
+
+    EXPECT_FALSE(status.ok());
+}
+
+TEST_F(PageManagerTest, FailedReadDoesNotBreakSubsequentValidRead) {
+    db::PageManager manager = CreateManager();
+    ASSERT_TRUE(manager.Open().ok());
+
+    db::PageId page_id;
+    ASSERT_TRUE(manager.AllocatePage(&page_id).ok());
+    db::ByteBuffer expected = MakePageData(kPageSize, 33U);
+    ASSERT_TRUE(manager.WritePage(db::Page{page_id, expected}).ok());
+
+    db::Page missing_page;
+    db::Status missing_status = manager.ReadPage(db::PageId{page_id.value + 10U}, &missing_page);
+    EXPECT_FALSE(missing_status.ok());
+
+    db::Page actual_page;
+    db::Status actual_status = manager.ReadPage(page_id, &actual_page);
+
+    ASSERT_TRUE(actual_status.ok()) << actual_status.message();
+    EXPECT_EQ(actual_page.data, expected);
+}
+
 TEST_F(PageManagerTest, ReopenExistingFilePreservesAllocatedPagesAndData) {
     db::PageId first_page;
     db::PageId second_page;

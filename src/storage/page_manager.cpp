@@ -1,9 +1,8 @@
-#include "../include/storage/page_manager.h"
+#include "storage/page_manager.h"
 #include "common/file_utils.h"
-#include "common/status.h"
 #include <cstdint>
 #include <fstream>
-#include <sys/_types/_off_t.h>
+#include <sstream>
 #include <vector>
 
 db::PageManager::PageManager(std::string file_path, std::size_t page_size)
@@ -15,6 +14,10 @@ db::PageManager::PageManager(std::string file_path, std::size_t page_size)
 {}
 
 db::Status db::PageManager::Open() {
+    if (is_open_) {
+        return Status::Ok();
+    }
+
     if (file_path_.empty() || page_size_ == 0) {
         return Status::Error(StatusCode::kInvalidArgument, "Invalid file path or page size");
     }
@@ -53,11 +56,17 @@ db::Status db::PageManager::Open() {
     }
 
     file.seekg(0, std::ios::end);
-    std::uint64_t size = static_cast<std::uint64_t>(file.tellg());
+    std::streampos end_pos = file.tellg();
+    if (end_pos < 0) {
+        return Status::Error(StatusCode::kIoError, "Failed to determine file size for " + file_path_);
+    }
+    std::uint64_t size = static_cast<std::uint64_t>(end_pos);
     file.seekg(0, std::ios::beg);
 
     if (size % page_size_ != 0) {
-        return Status::Error(StatusCode::kInvalidArgument, "File size is not a multiple of page size");
+        std::ostringstream oss;
+        oss << "File size " << size << " is not a multiple of page size " << page_size_;
+        return Status::Error(StatusCode::kInvalidArgument, oss.str());
     }
 
     page_count_ = size / page_size_;
@@ -78,20 +87,31 @@ db::Status db::PageManager::ReadPage(PageId id, Page* out) {
     }
 
     if (id.value >= page_count_) {
-        return Status::Error(StatusCode::kNotFound, "Page not found");
+        std::ostringstream oss;
+        oss << "Page " << id.value << " is out of range, page count is " << page_count_;
+        return Status::Error(StatusCode::kNotFound, oss.str());
     }
 
     std::uint64_t offset = id.value * page_size_;
 
-    file_.seekg(static_cast<off_t>(offset), std::ios::beg);
+    file_.clear();
+    file_.seekg(static_cast<std::streamoff>(offset), std::ios::beg);
+    if (!file_) {
+        std::ostringstream oss;
+        oss << "Failed to seek to page " << id.value << " at offset " << offset;
+        return Status::Error(StatusCode::kIoError, oss.str());
+    }
 
     out->id = id;
     out->data.resize(page_size_);
 
     file_.read(reinterpret_cast<char*>(out->data.data()), static_cast<std::streamsize>(page_size_));
 
-    if (file_.gcount() != static_cast<std::streamsize>(page_size_)) {
-        return Status::Error(StatusCode::kIoError, "Failed to read page");
+    if (!file_ || file_.gcount() != static_cast<std::streamsize>(page_size_)) {
+        std::ostringstream oss;
+        oss << "Failed to read page " << id.value << ", expected " << page_size_
+            << " bytes, got " << file_.gcount();
+        return Status::Error(StatusCode::kIoError, oss.str());
     }
 
     return Status::Ok();
@@ -103,7 +123,9 @@ db::Status db::PageManager::WritePage(const Page& page) {
     }
 
     if (page.id.value >= page_count_) {
-        return Status::Error(StatusCode::kNotFound, "Page not found");
+        std::ostringstream oss;
+        oss << "Page " << page.id.value << " is out of range, page count is " << page_count_;
+        return Status::Error(StatusCode::kNotFound, oss.str());
     }
 
     if (page.data.size() != page_size_) {
@@ -112,9 +134,13 @@ db::Status db::PageManager::WritePage(const Page& page) {
 
     std::uint64_t offset = page.id.value * page_size_;
 
-    file_.seekp(static_cast<off_t>(offset), std::ios::beg);
+    file_.clear();
+    file_.seekp(static_cast<std::streamoff>(offset), std::ios::beg);
     if (!file_) {
-        return Status::Error(StatusCode::kIoError, "Failed to seek page for writing");
+        std::ostringstream oss;
+        oss << "Failed to seek to page " << page.id.value << " at offset " << offset
+            << " for writing";
+        return Status::Error(StatusCode::kIoError, oss.str());
     }
 
     file_.write(reinterpret_cast<const char*>(page.data.data()), static_cast<std::streamsize>(page_size_));
@@ -135,6 +161,7 @@ db::Status db::PageManager::AllocatePage(PageId* out) {
         return Status::Error(StatusCode::kInvalidArgument, "Out pointer is null");
     }
 
+    file_.clear();
     file_.seekp(0, std::ios::end);
     if (!file_) {
         return Status::Error(StatusCode::kIoError, "Failed to seek end of file");
@@ -156,6 +183,11 @@ db::Status db::PageManager::AllocatePage(PageId* out) {
 }
 
 db::Status db::PageManager::Flush() {
+    if (!is_open_) {
+        return Status::Error(StatusCode::kInternalError, "Page manager is not open");
+    }
+
+    file_.clear();
     file_.flush();
     if (!file_) {
         return Status::Error(StatusCode::kIoError, "Failed to flush file");
