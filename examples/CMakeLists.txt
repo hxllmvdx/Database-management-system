@@ -1,0 +1,4 @@
+add_subdirectory(storage_basic)
+add_subdirectory(bstar_tree_basic)
+add_subdirectory(version_log_basic)
+add_subdirectory(query_basic)
