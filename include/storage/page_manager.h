@@ -1,5 +1,7 @@
 #pragma once
+#include <cstdint>
 #include <string>
+#include <fstream>
 #include "../common/status.h"
 #include "page.h"
 
@@ -21,6 +23,9 @@ public:
 private:
     std::string file_path_;
     std::size_t page_size_;
+    std::fstream file_;
+    bool is_open_;
+    uint64_t page_count_;
 };
 
 }
