@@ -15,6 +15,16 @@
 
 namespace {
 
+struct TestPageFileHeaderLayout {
+    char magic[8];
+    std::uint32_t version = 0;
+    std::uint64_t page_size = 0;
+    std::uint64_t page_count = 0;
+};
+
+constexpr std::uint64_t kPageFileHeaderSize =
+    static_cast<std::uint64_t>(sizeof(TestPageFileHeaderLayout));
+
 class PageManagerTest : public ::testing::Test {
 protected:
     static constexpr std::size_t kPageSize = 256;
@@ -58,7 +68,7 @@ TEST_F(PageManagerTest, OpenCreatesNewFile) {
 
     ASSERT_TRUE(status.ok()) << status.message();
     EXPECT_TRUE(std::filesystem::exists(file_path_));
-    EXPECT_EQ(std::filesystem::file_size(file_path_), 0U);
+    EXPECT_EQ(std::filesystem::file_size(file_path_), kPageFileHeaderSize);
     EXPECT_EQ(manager.page_count_, 0U);
 }
 
@@ -73,7 +83,7 @@ TEST_F(PageManagerTest, AllocatePageCreatesPage) {
     ASSERT_TRUE(status.ok()) << status.message();
     ASSERT_TRUE(flush_status.ok()) << flush_status.message();
     EXPECT_EQ(page_id, db::PageId{0});
-    EXPECT_EQ(std::filesystem::file_size(file_path_), kPageSize);
+    EXPECT_EQ(std::filesystem::file_size(file_path_), kPageFileHeaderSize + kPageSize);
 }
 
 TEST_F(PageManagerTest, NewlyAllocatedPageReadsBackAsZeroed) {
@@ -163,11 +173,23 @@ TEST_F(PageManagerTest, OpenRejectsFileWithMisalignedSize) {
     {
         std::ofstream file(file_path_, std::ios::binary);
         ASSERT_TRUE(file.is_open());
-        file.put(static_cast<char>(0x7f));
+        std::vector<char> bytes(kPageFileHeaderSize + 1U, 0);
+        file.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
     }
 
     db::PageManager manager = CreateManager();
     db::Status status = manager.Open();
+
+    EXPECT_FALSE(status.ok());
+}
+
+TEST_F(PageManagerTest, OpenRejectsFileWithDifferentPageSizeInHeader) {
+    db::PageManager manager = CreateManager();
+    ASSERT_TRUE(manager.Open().ok());
+    ASSERT_TRUE(manager.Flush().ok());
+
+    db::PageManager mismatched_manager(file_path_.string(), kPageSize * 2U);
+    db::Status status = mismatched_manager.Open();
 
     EXPECT_FALSE(status.ok());
 }
