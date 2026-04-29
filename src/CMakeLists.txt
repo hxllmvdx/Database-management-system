@@ -7,6 +7,9 @@ target_sources(coursedb_common
         common/bytes.cpp
         common/file_utils.cpp
         common/config.cpp
+        common/binary_io.cpp
+        common/catalog_serialization.cpp
+        execution/value.cpp
 )
 
 target_include_directories(coursedb_common
@@ -119,7 +122,6 @@ target_sources(coursedb_execution
         execution/create_table_executor.cpp
         execution/create_index_executor.cpp
         execution/expression.cpp
-        execution/value.cpp
         execution/tuple.cpp
 )
 
