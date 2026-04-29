@@ -9,6 +9,8 @@ target_sources(coursedb_common
         common/config.cpp
         common/binary_io.cpp
         common/catalog_serialization.cpp
+        common/value_serialization.cpp
+        common/row_serialization.cpp
         execution/value.cpp
 )
 
