@@ -9,9 +9,11 @@
 #include <utility>
 #include <vector>
 
+#include "catalog/schema.h"
 #include "common/binary_io.h"
 #include "common/catalog_serialization.h"
 #include "common/file_utils.h"
+#include "execution/value.h"
 
 namespace {
 
@@ -111,6 +113,10 @@ db::Status ValidateColumnSchema(const db::ColumnSchema& column) {
     if (column.type == db::ColumnType::kString && default_type != db::ValueType::kString) {
         return db::Status::Error(db::StatusCode::kInvalidArgument,
                                  "Invalid default value for string column");
+    }
+    if (column.type == db::ColumnType::kBool && default_type != db::ValueType::kBool) {
+        return db::Status::Error(db::StatusCode::kInvalidArgument,
+                                 "Invalid default value for bool column");
     }
 
     return db::Status::Ok();
