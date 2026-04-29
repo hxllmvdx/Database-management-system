@@ -29,6 +29,7 @@ endfunction()
 
 coursedb_add_test(coursedb_storage_tests
     SOURCES
+        storage/catalog_manager_tests.cpp
         storage/page_manager_tests.cpp
         storage/row_store_tests.cpp
         storage/table_storage_tests.cpp
@@ -36,6 +37,7 @@ coursedb_add_test(coursedb_storage_tests
         storage/version_log_tests.cpp
     LIBRARIES
         coursedb_storage
+        coursedb_execution
         coursedb_common
 )
 
