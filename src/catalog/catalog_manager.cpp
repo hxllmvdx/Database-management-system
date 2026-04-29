@@ -2,25 +2,20 @@
 
 #include <algorithm>
 #include <cctype>
-#include <cstdint>
-#include <cstring>
 #include <filesystem>
-#include <optional>
 #include <string_view>
 #include <system_error>
 #include <unordered_set>
 #include <utility>
 #include <vector>
 
-#include "common/bytes.h"
+#include "common/binary_io.h"
+#include "common/catalog_serialization.h"
 #include "common/file_utils.h"
 
 namespace {
 
 namespace fs = std::filesystem;
-
-using db::Byte;
-using db::ByteBuffer;
 
 std::string DatabasePath(const std::string& root_dir, const std::string& db_name) {
     return root_dir + "/" + db_name;
@@ -233,348 +228,21 @@ db::TableDescriptor NormalizeTableDescriptor(const std::string& root_dir,
     return desc;
 }
 
-void WriteBytes(ByteBuffer* buffer, const void* data, std::size_t size) {
-    const auto* bytes = static_cast<const Byte*>(data);
-    buffer->insert(buffer->end(), bytes, bytes + size);
-}
-
-void WriteUint8(ByteBuffer* buffer, std::uint8_t value) {
-    buffer->push_back(static_cast<Byte>(value));
-}
-
-void WriteUint32(ByteBuffer* buffer, std::uint32_t value) {
-    WriteBytes(buffer, &value, sizeof(value));
-}
-
-void WriteInt64(ByteBuffer* buffer, std::int64_t value) {
-    WriteBytes(buffer, &value, sizeof(value));
-}
-
-void WriteBool(ByteBuffer* buffer, bool value) {
-    WriteUint8(buffer, value ? 1U : 0U);
-}
-
-void WriteString(ByteBuffer* buffer, const std::string& value) {
-    WriteUint32(buffer, static_cast<std::uint32_t>(value.size()));
-    WriteBytes(buffer, value.data(), value.size());
-}
-
-db::Status EnsureReadable(const ByteBuffer& bytes, std::size_t offset, std::size_t need) {
-    if (offset > bytes.size() || bytes.size() - offset < need) {
-        return db::Status::Error(db::StatusCode::kInvalidArgument,
-                                 "Corrupted metadata: unexpected end of file");
-    }
-    return db::Status::Ok();
-}
-
-template <typename T>
-db::Status ReadPod(const ByteBuffer& bytes, std::size_t* offset, T* out) {
-    const db::Status status = EnsureReadable(bytes, *offset, sizeof(T));
-    if (!status.ok()) {
-        return status;
-    }
-
-    std::memcpy(out, bytes.data() + *offset, sizeof(T));
-    *offset += sizeof(T);
-    return db::Status::Ok();
-}
-
-db::Status ReadUint8(const ByteBuffer& bytes, std::size_t* offset, std::uint8_t* out) {
-    return ReadPod(bytes, offset, out);
-}
-
-db::Status ReadUint32(const ByteBuffer& bytes, std::size_t* offset, std::uint32_t* out) {
-    return ReadPod(bytes, offset, out);
-}
-
-db::Status ReadInt64(const ByteBuffer& bytes, std::size_t* offset, std::int64_t* out) {
-    return ReadPod(bytes, offset, out);
-}
-
-db::Status ReadBool(const ByteBuffer& bytes, std::size_t* offset, bool* out) {
-    std::uint8_t raw = 0;
-    db::Status status = ReadUint8(bytes, offset, &raw);
-    if (!status.ok()) {
-        return status;
-    }
-
-    if (raw > 1U) {
-        return db::Status::Error(db::StatusCode::kInvalidArgument,
-                                 "Corrupted metadata: invalid bool value");
-    }
-
-    *out = (raw == 1U);
-    return db::Status::Ok();
-}
-
-db::Status ReadString(const ByteBuffer& bytes, std::size_t* offset, std::string* out) {
-    std::uint32_t size = 0;
-    db::Status status = ReadUint32(bytes, offset, &size);
-    if (!status.ok()) {
-        return status;
-    }
-
-    status = EnsureReadable(bytes, *offset, size);
-    if (!status.ok()) {
-        return status;
-    }
-
-    out->assign(reinterpret_cast<const char*>(bytes.data() + *offset), size);
-    *offset += size;
-    return db::Status::Ok();
-}
-
-void SerializeValue(const db::Value& value, ByteBuffer* buffer) {
-    WriteUint32(buffer, static_cast<std::uint32_t>(value.type()));
-    switch (value.type()) {
-        case db::ValueType::kNull:
-            break;
-        case db::ValueType::kInt:
-            WriteInt64(buffer, value.AsInt());
-            break;
-        case db::ValueType::kString:
-            WriteString(buffer, value.AsString());
-            break;
-        case db::ValueType::kBool:
-            WriteBool(buffer, value.AsBool());
-            break;
-    }
-}
-
-db::Status DeserializeValue(const ByteBuffer& bytes, std::size_t* offset, db::Value* out) {
-    std::uint32_t raw_type = 0;
-    db::Status status = ReadUint32(bytes, offset, &raw_type);
-    if (!status.ok()) {
-        return status;
-    }
-
-    const auto type = static_cast<db::ValueType>(raw_type);
-    switch (type) {
-        case db::ValueType::kNull:
-            *out = db::Value::Null();
-            return db::Status::Ok();
-        case db::ValueType::kInt: {
-            std::int64_t value = 0;
-            status = ReadInt64(bytes, offset, &value);
-            if (!status.ok()) {
-                return status;
-            }
-            *out = db::Value::Int(value);
-            return db::Status::Ok();
-        }
-        case db::ValueType::kString: {
-            std::string value;
-            status = ReadString(bytes, offset, &value);
-            if (!status.ok()) {
-                return status;
-            }
-            *out = db::Value::String(std::move(value));
-            return db::Status::Ok();
-        }
-        case db::ValueType::kBool: {
-            bool value = false;
-            status = ReadBool(bytes, offset, &value);
-            if (!status.ok()) {
-                return status;
-            }
-            *out = db::Value::Bool(value);
-            return db::Status::Ok();
-        }
-    }
-
-    return db::Status::Error(db::StatusCode::kInvalidArgument,
-                             "Corrupted metadata: invalid value type");
-}
-
-void SerializeColumnSchema(const db::ColumnSchema& column, ByteBuffer* buffer) {
-    WriteString(buffer, column.name);
-    WriteUint32(buffer, static_cast<std::uint32_t>(column.type));
-    WriteBool(buffer, column.not_null);
-    WriteBool(buffer, column.indexed);
-    WriteBool(buffer, column.default_value.has_value());
-    if (column.default_value.has_value()) {
-        SerializeValue(*column.default_value, buffer);
-    }
-}
-
-db::Status DeserializeColumnSchema(const ByteBuffer& bytes,
-                                   std::size_t* offset,
-                                   db::ColumnSchema* out) {
-    db::Status status = ReadString(bytes, offset, &out->name);
-    if (!status.ok()) {
-        return status;
-    }
-
-    std::uint32_t raw_type = 0;
-    status = ReadUint32(bytes, offset, &raw_type);
-    if (!status.ok()) {
-        return status;
-    }
-    out->type = static_cast<db::ColumnType>(raw_type);
-
-    status = ReadBool(bytes, offset, &out->not_null);
-    if (!status.ok()) {
-        return status;
-    }
-
-    status = ReadBool(bytes, offset, &out->indexed);
-    if (!status.ok()) {
-        return status;
-    }
-
-    bool has_default = false;
-    status = ReadBool(bytes, offset, &has_default);
-    if (!status.ok()) {
-        return status;
-    }
-
-    out->default_value.reset();
-    if (has_default) {
-        db::Value value;
-        status = DeserializeValue(bytes, offset, &value);
-        if (!status.ok()) {
-            return status;
-        }
-        out->default_value = std::move(value);
-    }
-
-    return db::Status::Ok();
-}
-
-void SerializeTableSchema(const db::TableSchema& schema, ByteBuffer* buffer) {
-    WriteUint32(buffer, static_cast<std::uint32_t>(schema.columns.size()));
-    for (const db::ColumnSchema& column : schema.columns) {
-        SerializeColumnSchema(column, buffer);
-    }
-}
-
-db::Status DeserializeTableSchema(const ByteBuffer& bytes,
-                                  std::size_t* offset,
-                                  db::TableSchema* out) {
-    std::uint32_t column_count = 0;
-    db::Status status = ReadUint32(bytes, offset, &column_count);
-    if (!status.ok()) {
-        return status;
-    }
-
-    out->columns.clear();
-    out->columns.reserve(column_count);
-    for (std::uint32_t i = 0; i < column_count; ++i) {
-        db::ColumnSchema column;
-        status = DeserializeColumnSchema(bytes, offset, &column);
-        if (!status.ok()) {
-            return status;
-        }
-        out->columns.push_back(std::move(column));
-    }
-
-    return db::Status::Ok();
-}
-
-void SerializeIndexDescriptor(const db::IndexDescriptor& index, ByteBuffer* buffer) {
-    WriteString(buffer, index.name);
-    WriteString(buffer, index.table_name);
-    WriteString(buffer, index.column_name);
-    WriteBool(buffer, index.unique);
-}
-
-db::Status DeserializeIndexDescriptor(const ByteBuffer& bytes,
-                                      std::size_t* offset,
-                                      db::IndexDescriptor* out) {
-    db::Status status = ReadString(bytes, offset, &out->name);
-    if (!status.ok()) {
-        return status;
-    }
-
-    status = ReadString(bytes, offset, &out->table_name);
-    if (!status.ok()) {
-        return status;
-    }
-
-    status = ReadString(bytes, offset, &out->column_name);
-    if (!status.ok()) {
-        return status;
-    }
-
-    status = ReadBool(bytes, offset, &out->unique);
-    return status;
-}
-
-void SerializeTableDescriptor(const db::TableDescriptor& desc, ByteBuffer* buffer) {
-    WriteString(buffer, desc.database_name);
-    WriteString(buffer, desc.table_name);
-    WriteString(buffer, desc.data_file);
-    WriteString(buffer, desc.index_file);
-    SerializeTableSchema(desc.schema, buffer);
-    WriteUint32(buffer, static_cast<std::uint32_t>(desc.indexes.size()));
-    for (const db::IndexDescriptor& index : desc.indexes) {
-        SerializeIndexDescriptor(index, buffer);
-    }
-}
-
-db::Status DeserializeTableDescriptor(const ByteBuffer& bytes,
-                                      std::size_t* offset,
-                                      db::TableDescriptor* out) {
-    db::Status status = ReadString(bytes, offset, &out->database_name);
-    if (!status.ok()) {
-        return status;
-    }
-
-    status = ReadString(bytes, offset, &out->table_name);
-    if (!status.ok()) {
-        return status;
-    }
-
-    status = ReadString(bytes, offset, &out->data_file);
-    if (!status.ok()) {
-        return status;
-    }
-
-    status = ReadString(bytes, offset, &out->index_file);
-    if (!status.ok()) {
-        return status;
-    }
-
-    status = DeserializeTableSchema(bytes, offset, &out->schema);
-    if (!status.ok()) {
-        return status;
-    }
-
-    std::uint32_t index_count = 0;
-    status = ReadUint32(bytes, offset, &index_count);
-    if (!status.ok()) {
-        return status;
-    }
-
-    out->indexes.clear();
-    out->indexes.reserve(index_count);
-    for (std::uint32_t i = 0; i < index_count; ++i) {
-        db::IndexDescriptor index;
-        status = DeserializeIndexDescriptor(bytes, offset, &index);
-        if (!status.ok()) {
-            return status;
-        }
-        out->indexes.push_back(std::move(index));
-    }
-
-    return db::Status::Ok();
-}
-
 db::Status WriteTableMetaFile(const std::string& path, const db::TableDescriptor& desc) {
-    ByteBuffer bytes;
-    SerializeTableDescriptor(desc, &bytes);
+    db::ByteBuffer bytes;
+    db::catalog_serialization::SerializeTableDescriptor(desc, &bytes);
     return db::file_utils::WriteAllBytes(path, bytes);
 }
 
 db::Status ReadTableMetaFile(const std::string& path, db::TableDescriptor* out) {
-    ByteBuffer bytes;
+    db::ByteBuffer bytes;
     db::Status status = db::file_utils::ReadAllBytes(path, &bytes);
     if (!status.ok()) {
         return status;
     }
 
     std::size_t offset = 0;
-    status = DeserializeTableDescriptor(bytes, &offset, out);
+    status = db::catalog_serialization::DeserializeTableDescriptor(bytes, &offset, out);
     if (!status.ok()) {
         return status;
     }
