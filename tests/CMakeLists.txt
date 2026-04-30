@@ -33,6 +33,7 @@ coursedb_add_test(coursedb_storage_tests
         storage/page_manager_tests.cpp
         storage/row_store_tests.cpp
         storage/table_storage_tests.cpp
+        storage/key_encoder_tests.cpp
         storage/bstar_tree_tests.cpp
         storage/version_log_tests.cpp
     LIBRARIES
