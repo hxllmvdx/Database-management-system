@@ -2,86 +2,95 @@
 
 #include <gtest/gtest.h>
 
-#include "common/error.h"
 #include "index/key_encoder.h"
 
 namespace {
 
 TEST(KeyEncoderTest, NullRoundTripUsesEmptyPayload) {
-    const db::ByteBuffer encoded = db::KeyEncoder::Encode(db::Value::Null());
+    db::ByteBuffer encoded;
+    ASSERT_TRUE(db::KeyEncoder::Encode(db::Value::Null(), &encoded).ok());
     EXPECT_TRUE(encoded.empty());
 
-    const db::Value decoded = db::KeyEncoder::Decode(encoded, db::ValueType::kNull);
+    db::Value decoded;
+    ASSERT_TRUE(db::KeyEncoder::Decode(encoded, db::ValueType::kNull, &decoded).ok());
     EXPECT_EQ(decoded, db::Value::Null());
 }
 
 TEST(KeyEncoderTest, IntRoundTripPreservesValue) {
     const db::Value original = db::Value::Int(-123456789);
 
-    const db::ByteBuffer encoded = db::KeyEncoder::Encode(original);
+    db::ByteBuffer encoded;
+    ASSERT_TRUE(db::KeyEncoder::Encode(original, &encoded).ok());
     ASSERT_EQ(encoded.size(), sizeof(std::int64_t));
 
-    const db::Value decoded = db::KeyEncoder::Decode(encoded, db::ValueType::kInt);
+    db::Value decoded;
+    ASSERT_TRUE(db::KeyEncoder::Decode(encoded, db::ValueType::kInt, &decoded).ok());
     EXPECT_EQ(decoded, original);
 }
 
 TEST(KeyEncoderTest, StringRoundTripPreservesValue) {
     const db::Value original = db::Value::String("hello-index");
 
-    const db::ByteBuffer encoded = db::KeyEncoder::Encode(original);
+    db::ByteBuffer encoded;
+    ASSERT_TRUE(db::KeyEncoder::Encode(original, &encoded).ok());
     ASSERT_EQ(encoded.size(), 11U);
 
-    const db::Value decoded = db::KeyEncoder::Decode(encoded, db::ValueType::kString);
+    db::Value decoded;
+    ASSERT_TRUE(db::KeyEncoder::Decode(encoded, db::ValueType::kString, &decoded).ok());
     EXPECT_EQ(decoded, original);
 }
 
 TEST(KeyEncoderTest, EmptyStringRoundTripPreservesValue) {
     const db::Value original = db::Value::String("");
 
-    const db::ByteBuffer encoded = db::KeyEncoder::Encode(original);
+    db::ByteBuffer encoded;
+    ASSERT_TRUE(db::KeyEncoder::Encode(original, &encoded).ok());
     EXPECT_TRUE(encoded.empty());
 
-    const db::Value decoded = db::KeyEncoder::Decode(encoded, db::ValueType::kString);
+    db::Value decoded;
+    ASSERT_TRUE(db::KeyEncoder::Decode(encoded, db::ValueType::kString, &decoded).ok());
     EXPECT_EQ(decoded, original);
 }
 
 TEST(KeyEncoderTest, BoolRoundTripPreservesValue) {
     const db::Value original = db::Value::Bool(true);
 
-    const db::ByteBuffer encoded = db::KeyEncoder::Encode(original);
+    db::ByteBuffer encoded;
+    ASSERT_TRUE(db::KeyEncoder::Encode(original, &encoded).ok());
     ASSERT_EQ(encoded.size(), 1U);
     EXPECT_EQ(encoded[0], 1U);
 
-    const db::Value decoded = db::KeyEncoder::Decode(encoded, db::ValueType::kBool);
+    db::Value decoded;
+    ASSERT_TRUE(db::KeyEncoder::Decode(encoded, db::ValueType::kBool, &decoded).ok());
     EXPECT_EQ(decoded, original);
 }
 
 TEST(KeyEncoderTest, DecodeIntRejectsWrongSize) {
     const db::ByteBuffer encoded = {1U, 2U, 3U};
-    EXPECT_THROW(
-        static_cast<void>(db::KeyEncoder::Decode(encoded, db::ValueType::kInt)),
-        db::DbError);
+    db::Value decoded;
+    const db::Status status = db::KeyEncoder::Decode(encoded, db::ValueType::kInt, &decoded);
+    EXPECT_FALSE(status.ok());
 }
 
 TEST(KeyEncoderTest, DecodeBoolRejectsWrongSize) {
     const db::ByteBuffer encoded = {0U, 1U};
-    EXPECT_THROW(
-        static_cast<void>(db::KeyEncoder::Decode(encoded, db::ValueType::kBool)),
-        db::DbError);
+    db::Value decoded;
+    const db::Status status = db::KeyEncoder::Decode(encoded, db::ValueType::kBool, &decoded);
+    EXPECT_FALSE(status.ok());
 }
 
 TEST(KeyEncoderTest, DecodeBoolRejectsInvalidByte) {
     const db::ByteBuffer encoded = {2U};
-    EXPECT_THROW(
-        static_cast<void>(db::KeyEncoder::Decode(encoded, db::ValueType::kBool)),
-        db::DbError);
+    db::Value decoded;
+    const db::Status status = db::KeyEncoder::Decode(encoded, db::ValueType::kBool, &decoded);
+    EXPECT_FALSE(status.ok());
 }
 
 TEST(KeyEncoderTest, DecodeNullRejectsNonEmptyPayload) {
     const db::ByteBuffer encoded = {0U};
-    EXPECT_THROW(
-        static_cast<void>(db::KeyEncoder::Decode(encoded, db::ValueType::kNull)),
-        db::DbError);
+    db::Value decoded;
+    const db::Status status = db::KeyEncoder::Decode(encoded, db::ValueType::kNull, &decoded);
+    EXPECT_FALSE(status.ok());
 }
 
 }  // namespace

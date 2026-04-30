@@ -1,14 +1,14 @@
 #pragma once
-#include <string>
 #include "../common/bytes.h"
+#include "../common/status.h"
 #include "../execution/value.h"
 
 namespace db {
 
 class KeyEncoder {
 public:
-    static ByteBuffer Encode(const Value& value);
-    static Value Decode(const ByteBuffer& bytes, ValueType type);
+    static Status Encode(const Value& value, ByteBuffer* out);
+    static Status Decode(const ByteBuffer& bytes, ValueType type, Value* out);
 };
 
 }
