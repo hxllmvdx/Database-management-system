@@ -10,7 +10,7 @@ struct TableDescriptor {
     std::string database_name;
     std::string table_name;
     std::string data_file;
-    std::string index_file;
+    std::string index_dir;
     TableSchema schema;
     std::vector<IndexDescriptor> indexes;
 };

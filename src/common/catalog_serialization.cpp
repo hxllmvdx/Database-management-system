@@ -116,7 +116,7 @@ void SerializeTableDescriptor(const TableDescriptor& desc, ByteBuffer* buffer) {
     binary_io::WriteString(buffer, desc.database_name);
     binary_io::WriteString(buffer, desc.table_name);
     binary_io::WriteString(buffer, desc.data_file);
-    binary_io::WriteString(buffer, desc.index_file);
+    binary_io::WriteString(buffer, desc.index_dir);
     SerializeTableSchema(desc.schema, buffer);
     binary_io::WriteUint32(buffer, static_cast<std::uint32_t>(desc.indexes.size()));
     for (const IndexDescriptor& index : desc.indexes) {
@@ -140,7 +140,7 @@ Status DeserializeTableDescriptor(const ByteBuffer& bytes, std::size_t* offset, 
         return status;
     }
 
-    status = binary_io::ReadString(bytes, offset, &out->index_file);
+    status = binary_io::ReadString(bytes, offset, &out->index_dir);
     if (!status.ok()) {
         return status;
     }

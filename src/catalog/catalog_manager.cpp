@@ -51,10 +51,10 @@ std::string DefaultTableDataPath(const std::string& root_dir,
     return TablesDirPath(root_dir, db_name) + "/" + table_name + ".tbl";
 }
 
-std::string DefaultTableIndexPath(const std::string& root_dir,
-                                  const std::string& db_name,
-                                  const std::string& table_name) {
-    return IndexesDirPath(root_dir, db_name) + "/" + table_name + ".idx";
+std::string DefaultTableIndexDir(const std::string& root_dir,
+                                 const std::string& db_name,
+                                 const std::string& table_name) {
+    return IndexesDirPath(root_dir, db_name) + "/" + table_name;
 }
 
 bool IsValidName(std::string_view name) {
@@ -194,8 +194,8 @@ db::Status ValidateTableDescriptor(const db::TableDescriptor& desc) {
     if (desc.data_file.empty()) {
         return db::Status::Error(db::StatusCode::kInvalidArgument, "Table data file path is empty");
     }
-    if (desc.index_file.empty()) {
-        return db::Status::Error(db::StatusCode::kInvalidArgument, "Table index file path is empty");
+    if (desc.index_dir.empty()) {
+        return db::Status::Error(db::StatusCode::kInvalidArgument, "Table index directory path is empty");
     }
 
     return db::Status::Ok();
@@ -221,8 +221,8 @@ db::TableDescriptor NormalizeTableDescriptor(const std::string& root_dir,
     if (desc.data_file.empty()) {
         desc.data_file = DefaultTableDataPath(root_dir, desc.database_name, desc.table_name);
     }
-    if (desc.index_file.empty()) {
-        desc.index_file = DefaultTableIndexPath(root_dir, desc.database_name, desc.table_name);
+    if (desc.index_dir.empty()) {
+        desc.index_dir = DefaultTableIndexDir(root_dir, desc.database_name, desc.table_name);
     }
 
     for (db::IndexDescriptor& index : desc.indexes) {

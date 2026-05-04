@@ -34,7 +34,7 @@ protected:
         desc.database_name = "testdb";
         desc.table_name = "users";
         desc.data_file = (root_dir_ / "users.tbl").string();
-        desc.index_file = (root_dir_ / "users.idx").string();
+        desc.index_dir = (root_dir_ / "indexes" / "users").string();
 
         db::ColumnSchema id_column;
         id_column.name = "id";
