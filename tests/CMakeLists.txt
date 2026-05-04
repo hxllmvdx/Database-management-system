@@ -35,6 +35,7 @@ coursedb_add_test(coursedb_storage_tests
         storage/table_storage_tests.cpp
         storage/key_encoder_tests.cpp
         storage/bstar_tree_tests.cpp
+        storage/index_manager_tests.cpp
         storage/version_log_tests.cpp
     LIBRARIES
         coursedb_storage

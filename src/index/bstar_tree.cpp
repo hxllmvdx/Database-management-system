@@ -12,7 +12,7 @@ namespace {
 
 constexpr std::array<char, 8> kTreeMetadataMagic = {'C', 'D', 'B', 'B', '*', '+', 'M', 'T'};
 constexpr std::array<char, 8> kTreeNodeMagic = {'C', 'D', 'B', 'B', '*', '+', 'N', 'D'};
-constexpr std::uint32_t kTreeVersion = 2;
+constexpr std::uint32_t kTreeVersion = 3;
 constexpr std::uint64_t kInvalidPageIdValue = std::numeric_limits<std::uint64_t>::max();
 
 db::PageId InvalidPageId() {
@@ -26,6 +26,7 @@ bool IsInvalidPageId(db::PageId page_id) {
 std::size_t MetadataHeaderSize() {
     return kTreeMetadataMagic.size() + sizeof(std::uint32_t) + sizeof(std::uint32_t) +
            sizeof(std::uint64_t) + sizeof(std::uint64_t) + sizeof(std::uint64_t) +
+           sizeof(std::uint64_t) +
            sizeof(std::uint64_t);
 }
 
@@ -82,19 +83,100 @@ std::optional<std::size_t> ChooseBalancedSplit(
 
 namespace db {
 
+Status BStarTree::ResolveMaxEncodedKeySize(ValueType key_type,
+                                           std::size_t max_variable_key_payload_bytes,
+                                           std::size_t* out_max_encoded_key_size) {
+    if (out_max_encoded_key_size == nullptr) {
+        return Status::Error(StatusCode::kInvalidArgument,
+                             "out_max_encoded_key_size must not be nullptr");
+    }
+    if (max_variable_key_payload_bytes == 0U) {
+        return Status::Error(StatusCode::kInvalidArgument,
+                             "max_variable_key_payload_bytes must be greater than zero");
+    }
+
+    switch (key_type) {
+    case ValueType::kInt:
+        *out_max_encoded_key_size = sizeof(std::int64_t);
+        return Status::Ok();
+    case ValueType::kBool:
+        *out_max_encoded_key_size = 1U;
+        return Status::Ok();
+    case ValueType::kString:
+        *out_max_encoded_key_size = max_variable_key_payload_bytes;
+        return Status::Ok();
+    case ValueType::kNull:
+        return Status::Error(StatusCode::kInvalidArgument,
+                             "NULL is not a valid BStarTree key type");
+    }
+
+    return Status::Error(StatusCode::kInvalidArgument, "Unsupported BStarTree key type");
+}
+
+Status BStarTree::ComputeMinDegreeForPage(std::size_t page_size,
+                                          std::size_t max_encoded_key_size,
+                                          std::size_t* out_min_degree) {
+    if (out_min_degree == nullptr) {
+        return Status::Error(StatusCode::kInvalidArgument, "out_min_degree must not be nullptr");
+    }
+    if (max_encoded_key_size == 0U) {
+        return Status::Error(StatusCode::kInvalidArgument,
+                             "max_encoded_key_size must be greater than zero");
+    }
+
+    const std::size_t header_size = NodeHeaderSize();
+    const std::size_t leaf_entry_size =
+        sizeof(std::uint32_t) + max_encoded_key_size + sizeof(std::uint64_t);
+    const std::size_t internal_bundle_size =
+        sizeof(std::uint32_t) + max_encoded_key_size + sizeof(std::uint64_t);
+
+    if (page_size <= header_size + sizeof(std::uint64_t)) {
+        return Status::Error(StatusCode::kInvalidArgument,
+                             "Page size is too small for BStarTree node headers");
+    }
+
+    const std::size_t leaf_max_keys = (page_size - header_size) / leaf_entry_size;
+    const std::size_t internal_max_keys =
+        (page_size - header_size - sizeof(std::uint64_t)) / internal_bundle_size;
+    const std::size_t max_keys = std::min(leaf_max_keys, internal_max_keys);
+    if (max_keys < 3U) {
+        return Status::Error(StatusCode::kInvalidArgument,
+                             "Page size is too small to support BStarTree min_degree >= 2");
+    }
+
+    *out_min_degree = (max_keys + 1U) / 2U;
+    return Status::Ok();
+}
+
 BStarTree::BStarTree(std::string index_file,
                      ValueType key_type,
                      std::size_t page_size,
-                     std::size_t min_degree)
+                     std::size_t min_degree,
+                     std::size_t max_variable_key_payload_bytes)
     : index_file_(std::move(index_file)),
       key_type_(key_type),
       page_size_(page_size),
       min_degree_(min_degree),
+      max_key_payload_bytes_(0),
       page_manager_(index_file_, page_size_) {
+    std::size_t resolved_max_key_payload_bytes = 0;
+    if (ResolveMaxEncodedKeySize(key_type_, max_variable_key_payload_bytes,
+                                 &resolved_max_key_payload_bytes)
+            .ok()) {
+        max_key_payload_bytes_ = resolved_max_key_payload_bytes;
+    }
+    if (min_degree_ == 0U && max_key_payload_bytes_ != 0U) {
+        std::size_t computed_min_degree = 0;
+        if (ComputeMinDegreeForPage(page_size_, max_key_payload_bytes_, &computed_min_degree).ok()) {
+            min_degree_ = computed_min_degree;
+        }
+    }
+
     metadata_.version = kTreeVersion;
     metadata_.root_page_id = InvalidPageId();
     metadata_.first_leaf_page_id = InvalidPageId();
     metadata_.min_degree = min_degree_;
+    metadata_.max_key_payload_bytes = max_key_payload_bytes_;
     metadata_.tree_height = 0;
 }
 
@@ -104,6 +186,10 @@ Status BStarTree::Open() {
     }
     if (index_file_.empty()) {
         return Status::Error(StatusCode::kInvalidArgument, "Index file path is empty");
+    }
+    if (max_key_payload_bytes_ == 0U) {
+        return Status::Error(StatusCode::kInvalidArgument,
+                             "BStarTree key payload policy must be greater than zero");
     }
     if (min_degree_ < 2U) {
         return Status::Error(StatusCode::kInvalidArgument, "BStarTree min_degree must be at least 2");
@@ -318,6 +404,15 @@ Status BStarTree::ValidateKeyType(const Value& key) const {
     if (key.type() != key_type_) {
         return Status::Error(StatusCode::kInvalidArgument, "Key type does not match index key type");
     }
+    ByteBuffer encoded_key;
+    Status status = KeyEncoder::Encode(key, &encoded_key);
+    if (!status.ok()) {
+        return status;
+    }
+    if (encoded_key.size() > max_key_payload_bytes_) {
+        return Status::Error(StatusCode::kInvalidArgument,
+                             "Encoded index key exceeds configured maximum payload size");
+    }
     return Status::Ok();
 }
 
@@ -354,6 +449,7 @@ Status BStarTree::InitializeTree() {
     metadata_.root_page_id = InvalidPageId();
     metadata_.first_leaf_page_id = InvalidPageId();
     metadata_.min_degree = min_degree_;
+    metadata_.max_key_payload_bytes = max_key_payload_bytes_;
     metadata_.tree_height = 0;
     return WriteMetadata();
 }
@@ -415,6 +511,7 @@ Status BStarTree::SerializeMetadata(ByteBuffer* out) const {
     binary_io::WriteUint64(out, metadata_.root_page_id.value);
     binary_io::WriteUint64(out, metadata_.first_leaf_page_id.value);
     binary_io::WriteUint64(out, metadata_.min_degree);
+    binary_io::WriteUint64(out, metadata_.max_key_payload_bytes);
     binary_io::WriteUint64(out, metadata_.tree_height);
     return Status::Ok();
 }
@@ -463,6 +560,14 @@ Status BStarTree::DeserializeMetadata(const ByteBuffer& bytes, TreeMetadata* out
     }
     if (out->min_degree != min_degree_) {
         return Status::Error(StatusCode::kInvalidArgument, "Index min_degree does not match tree metadata");
+    }
+    status = binary_io::ReadUint64(bytes, &offset, &out->max_key_payload_bytes);
+    if (!status.ok()) {
+        return status;
+    }
+    if (out->max_key_payload_bytes != max_key_payload_bytes_) {
+        return Status::Error(StatusCode::kInvalidArgument,
+                             "Index key payload policy does not match tree metadata");
     }
     return binary_io::ReadUint64(bytes, &offset, &out->tree_height);
 }

@@ -24,10 +24,20 @@ struct KeyRange {
 
 class BStarTree {
 public:
+    static constexpr std::size_t kDefaultMaxVariableKeyPayloadBytes = 256;
+
+    static Status ResolveMaxEncodedKeySize(ValueType key_type,
+                                           std::size_t max_variable_key_payload_bytes,
+                                           std::size_t* out_max_encoded_key_size);
+    static Status ComputeMinDegreeForPage(std::size_t page_size,
+                                          std::size_t max_encoded_key_size,
+                                          std::size_t* out_min_degree);
+
     BStarTree(std::string index_file,
               ValueType key_type,
               std::size_t page_size = 4096,
-              std::size_t min_degree = 2);
+              std::size_t min_degree = 0,
+              std::size_t max_variable_key_payload_bytes = kDefaultMaxVariableKeyPayloadBytes);
 
     Status Open();
     Status Insert(const Value& key, RowId rid);
@@ -46,6 +56,7 @@ private:
         PageId root_page_id{};
         PageId first_leaf_page_id{};
         std::uint64_t min_degree = 0;
+        std::uint64_t max_key_payload_bytes = 0;
         std::uint64_t tree_height = 0;
     };
 
@@ -167,6 +178,7 @@ private:
     ValueType key_type_;
     std::size_t page_size_;
     std::size_t min_degree_;
+    std::size_t max_key_payload_bytes_;
     mutable PageManager page_manager_;
     bool is_open_ = false;
     TreeMetadata metadata_;
