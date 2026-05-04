@@ -90,6 +90,7 @@ void SerializeIndexDescriptor(const IndexDescriptor& index, ByteBuffer* buffer) 
     binary_io::WriteString(buffer, index.name);
     binary_io::WriteString(buffer, index.table_name);
     binary_io::WriteString(buffer, index.column_name);
+    binary_io::WriteString(buffer, index.file_path);
     binary_io::WriteBool(buffer, index.unique);
 }
 
@@ -105,6 +106,11 @@ Status DeserializeIndexDescriptor(const ByteBuffer& bytes, std::size_t* offset, 
     }
 
     status = binary_io::ReadString(bytes, offset, &out->column_name);
+    if (!status.ok()) {
+        return status;
+    }
+
+    status = binary_io::ReadString(bytes, offset, &out->file_path);
     if (!status.ok()) {
         return status;
     }

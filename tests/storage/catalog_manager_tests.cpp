@@ -56,6 +56,7 @@ protected:
         index.name = table_name + "_id_idx";
         index.table_name = table_name;
         index.column_name = "id";
+        index.file_path = (root_dir_ / "testdb" / "indexes" / table_name / (index.name + ".idx")).string();
         index.unique = true;
         desc.indexes.push_back(index);
 
@@ -90,6 +91,7 @@ protected:
             EXPECT_EQ(lhs.name, rhs.name);
             EXPECT_EQ(lhs.table_name, rhs.table_name);
             EXPECT_EQ(lhs.column_name, rhs.column_name);
+            EXPECT_EQ(lhs.file_path, rhs.file_path);
             EXPECT_EQ(lhs.unique, rhs.unique);
         }
     }

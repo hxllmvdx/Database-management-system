@@ -57,6 +57,10 @@ std::string DefaultTableIndexDir(const std::string& root_dir,
     return IndexesDirPath(root_dir, db_name) + "/" + table_name;
 }
 
+std::string DefaultIndexFilePath(const std::string& index_dir, const std::string& index_name) {
+    return index_dir + "/" + index_name + ".idx";
+}
+
 bool IsValidName(std::string_view name) {
     if (name.empty()) {
         return false;
@@ -158,6 +162,9 @@ db::Status ValidateIndexDescriptor(const db::IndexDescriptor& index,
         return db::Status::Error(db::StatusCode::kInvalidArgument,
                                  "Index column does not exist in table schema");
     }
+    if (index.file_path.empty()) {
+        return db::Status::Error(db::StatusCode::kInvalidArgument, "Index file path is empty");
+    }
 
     return db::Status::Ok();
 }
@@ -228,6 +235,9 @@ db::TableDescriptor NormalizeTableDescriptor(const std::string& root_dir,
     for (db::IndexDescriptor& index : desc.indexes) {
         if (index.table_name.empty()) {
             index.table_name = desc.table_name;
+        }
+        if (index.file_path.empty()) {
+            index.file_path = DefaultIndexFilePath(desc.index_dir, index.name);
         }
     }
 
