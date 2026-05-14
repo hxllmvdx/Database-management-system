@@ -186,6 +186,13 @@ target_link_libraries(coursedb_network
         coursedb_project_options
 )
 
+if(WIN32)
+    target_link_libraries(coursedb_network
+        PUBLIC
+            ws2_32
+    )
+endif()
+
 add_library(coursedb_server STATIC)
 
 target_sources(coursedb_server

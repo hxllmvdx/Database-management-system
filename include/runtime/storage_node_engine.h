@@ -1,4 +1,5 @@
 #pragma once
+#include <memory>
 #include <string>
 #include "../common/status.h"
 #include "../common/config.h"
@@ -11,10 +12,12 @@ namespace db {
 
 class SqlStatement;
 struct QueryResult;
+class TableStorage;
 
 class StorageNodeEngine {
 public:
     explicit StorageNodeEngine(Config config);
+    ~StorageNodeEngine();
 
     Status Start();
     Status Stop();
@@ -51,7 +54,11 @@ public:
     IndexManager& index_manager();
 
 private:
-    Config config_;
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
+
+    TableStorage* GetTableStorage(const std::string& db_name,
+                                  const std::string& table_name);
 };
 
 }

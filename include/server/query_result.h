@@ -14,4 +14,7 @@ struct QueryResult {
     std::size_t affected_rows = 0;
 };
 
+// преобразует результат запроса в json-строку для вывода в терминал
+std::string QueryResultToJson(const QueryResult& result);
+
 }

@@ -11,9 +11,11 @@ public:
     Status Stop();
 
     StorageNodeEngine& engine();
+    const Config& config() const; // доступ к конфигурации
 
 private:
-    StorageNodeEngine engine_;
+    Config config_; // сохраняем конфиг
+    StorageNodeEngine engine_; // движок хранения
 };
 
 }
