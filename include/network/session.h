@@ -1,11 +1,12 @@
+// исходный код написан человеком 1, комментарии добавлены человеком 3
 #pragma once
-#include <string>
+#include <string> // стандартный строковый тип
 
-namespace db {
+namespace db { // пространство имён базы данных
 
-struct Session {
-    std::string client_id;
-    std::string remote_addr;
-};
+struct Session { // транспортные метаданные подключения клиента
+    std::string client_id;   // уникальный идентификатор клиента, генерирует TcpServer
+    std::string remote_addr; // ip-адрес клиента в формате строки
+}; // Session не хранит состояние бд (это SessionContext), только сетевые данные
 
-}
+} // namespace db

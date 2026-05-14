@@ -1,58 +1,54 @@
-#include "server/storage_service.h"
-#include <unordered_map>
-#include <mutex>
+// исходный код написан человеком 1, комментарии добавлены человеком 3
+#include "server/storage_service.h" // публичный интерфейс сервиса
+#include <unordered_map> // хранилище сессий по client_id
+#include <mutex>         // защита хранилища от гонок данных
 
-namespace db {
+namespace db { // пространство имён базы данных
 
-namespace {
+namespace { // внутреннее хранилище сессий, общее для всех запросов
 
-// хранилище сессий, общее для всех запросов к сервису
-std::unordered_map<std::string, SessionContext> g_sessions; // client_id -> context
-std::mutex g_sessions_mtx; // защита хранилища
+std::unordered_map<std::string, SessionContext> g_sessions; // client_id → SessionContext
+std::mutex g_sessions_mtx; // мьютекс для потокобезопасного доступа к g_sessions
 
 } // anonymous namespace
 
 StorageService::StorageService(QueryProcessor* processor)
-    : processor_(processor) {}
+    : processor_(processor) {} // сохраняем указатель на QueryProcessor
 
 Response StorageService::HandleRequest(const Session& session,
                                        const Request& request) {
-    Response resp{};
-    resp.ok = true;
+    Response resp{}; // формируем ответ
+    resp.ok = true;  // по умолчанию считаем, что всё хорошо
 
-    // получаем или создаём session_context по client_id
-    SessionContext* ctx = nullptr;
+    SessionContext* ctx = nullptr; // указатель на контекст текущей сессии
     {
-        std::lock_guard<std::mutex> lock(g_sessions_mtx);
-        auto it = g_sessions.find(session.client_id);
-        if (it == g_sessions.end()) {
-            SessionContext new_ctx;
-            new_ctx.client_id = session.client_id;
-            auto [inserted_it, _] = g_sessions.emplace(session.client_id, std::move(new_ctx));
-            ctx = &inserted_it->second;
-        } else {
-            ctx = &it->second;
-        }
-    }
+        std::lock_guard<std::mutex> lock(g_sessions_mtx); // блокируем хранилище
+        auto it = g_sessions.find(session.client_id); // ищем существующую сессию
+        if (it == g_sessions.end()) { // новый клиент — создаём контекст
+            SessionContext new_ctx; // свежий контекст
+            new_ctx.client_id = session.client_id; // копируем client_id из транспорта
+            auto [inserted_it, _] = g_sessions.emplace(session.client_id, std::move(new_ctx)); // добавляем
+            ctx = &inserted_it->second; // получаем указатель на новый контекст
+        } else { // клиент уже был — используем существующий контекст
+            ctx = &it->second; // указатель на найденный контекст
+        } // if
+    } // unlock
 
-    // если в запросе указана база данных — обновляем контекст
-    if (!request.database.empty()) {
-        ctx->current_db = request.database;
-    }
+    if (!request.database.empty()) { // если в запросе явно указана база данных
+        ctx->current_db = request.database; // обновляем текущую бд в контексте
+    } // if
 
-    // mvp: аутентификация — просто проверяем, что токен не пуст (если передан)
-    if (!request.auth_token.empty()) {
-        ctx->authenticated = true;
-        ctx->user_id = request.auth_token; // временно используем токен как user_id
-    }
+    if (!request.auth_token.empty()) { // если передан токен аутентификации
+        ctx->authenticated = true; // помечаем как аутентифицированного
+        ctx->user_id = request.auth_token; // временно используем токен как user_id (TODO: JWT)
+    } // if
 
-    // вызываем query processor
-    QueryResult result = processor_->Execute(request.sql, ctx);
+    QueryResult result = processor_->Execute(request.sql, ctx); // выполняем sql через QueryProcessor (человек 2)
 
-    resp.ok = result.ok;
-    resp.error = result.error;
-    resp.result = std::move(result);
-    return resp;
-}
+    resp.ok = result.ok;       // копируем флаг успеха
+    resp.error = result.error; // копируем текст ошибки
+    resp.result = std::move(result); // переносим результат в ответ
+    return resp; // возвращаем сформированный Response
+} // HandleRequest
 
 } // namespace db

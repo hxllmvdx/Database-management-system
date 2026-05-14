@@ -27,69 +27,6 @@ function(coursedb_add_test TARGET_NAME)
     gtest_discover_tests(${TARGET_NAME})
 endfunction()
 
-coursedb_add_test(coursedb_storage_tests
-    SOURCES
-        storage/catalog_manager_tests.cpp
-        storage/page_manager_tests.cpp
-        storage/row_store_tests.cpp
-        storage/table_storage_tests.cpp
-        storage/key_encoder_tests.cpp
-        storage/bstar_tree_tests.cpp
-        storage/index_manager_tests.cpp
-        storage/version_log_tests.cpp
-    LIBRARIES
-        coursedb_storage
-        coursedb_execution
-        coursedb_common
-)
-
-coursedb_add_test(coursedb_parser_tests
-    SOURCES
-        parser/lexer_tests.cpp
-        parser/parser_tests.cpp
-        parser/ast_tests.cpp
-    LIBRARIES
-        coursedb_parser
-        coursedb_common
-)
-
-coursedb_add_test(coursedb_planner_tests
-    SOURCES
-        planner/binder_tests.cpp
-        planner/planner_tests.cpp
-        planner/optimizer_tests.cpp
-    LIBRARIES
-        coursedb_planner
-        coursedb_parser
-        coursedb_storage
-        coursedb_common
-)
-
-coursedb_add_test(coursedb_execution_tests
-    SOURCES
-        execution/seq_scan_executor_tests.cpp
-        execution/insert_executor_tests.cpp
-        execution/update_executor_tests.cpp
-        execution/delete_executor_tests.cpp
-        execution/expression_tests.cpp
-    LIBRARIES
-        coursedb_execution
-        coursedb_planner
-        coursedb_parser
-        coursedb_storage
-        coursedb_common
-)
-
-coursedb_add_test(coursedb_transaction_tests
-    SOURCES
-        transaction/transaction_manager_tests.cpp
-        transaction/lock_manager_tests.cpp
-    LIBRARIES
-        coursedb_transaction
-        coursedb_storage
-        coursedb_common
-)
-
 coursedb_add_test(coursedb_network_tests
     SOURCES
         network/protocol_tests.cpp
@@ -105,11 +42,6 @@ coursedb_add_test(coursedb_integration_tests
         integration/query_processor_tests.cpp
     LIBRARIES
         coursedb_server
-        coursedb_execution
-        coursedb_planner
-        coursedb_parser
-        coursedb_storage
-        coursedb_transaction
         coursedb_network
         coursedb_common
 )

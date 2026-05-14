@@ -1,0 +1,216 @@
+# Readmeagata — зона ответственности Человека 3 (network / server / apps / integration)
+
+## Правило оформления кода
+
+- **Весь исходный код написан человеком 1.** Человек 3 (я) переписывает / дополняет его, добавляя комментарии и заготовки.
+- Комментарии к коду: **русский язык, с маленькой буквы, справа от строчки кода**.
+- Заготовки для человека 2 явно помечены комментарием `// ЗАГОТОВКА ДЛЯ ЧЕЛОВЕКА 2`.
+- Код человека 2 ещё **не написан вообще** — в проекте только заглушки.
+
+---
+
+## Архитектура целевого pipeline
+
+```
+CLI → TcpClient → TcpServer → StorageService → QueryProcessor
+                                                    ↓
+                              ┌─────────────────────┼─────────────────────┐
+                              ↓                     ↓                     ↓
+                           Parse()               Plan()            ExecutePlan()
+                           (ЗАГОТОВКА            (ЗАГОТОВКА         (ЗАГОТОВКА
+                            ДЛЯ ЧЕЛ. 2)          ДЛЯ ЧЕЛ. 2)        ДЛЯ ЧЕЛ. 2)
+                              ↓                     ↓                     ↓
+                           AST              PhysicalPlan           QueryResult
+                              ↓                     ↓                     ↓
+                                               StorageNodeEngine
+                                               (код человека 1,
+                                                пока заглушка)
+```
+
+---
+
+## Этап 5. QueryProcessor — заготовки под человека 2
+
+### 5.1. Структура Execute()
+
+Разбит на три фазы с чёткими заглушками. Код человека 1 переписан человеком 3.
+
+**Файл:** `src/server/query_processor.cpp`
+
+| Фаза | Функция | Статус | Описание |
+|------|---------|--------|----------|
+| 1 | `ParseResult Parse(const std::string& sql)` | ⚠️ ЗАГОТОВКА ДЛЯ ЧЕЛОВЕКА 2 | Заглушка. Человек 2 ещё не писал код. Когда реализует Parser — заменить на `Parser::Parse(sql) → AST` |
+| 2 | `PlanResult Plan(const ParseResult&, SessionContext*)` | ⚠️ ЗАГОТОВКА ДЛЯ ЧЕЛОВЕКА 2 | Заглушка. Человек 2 ещё не писал код. Когда реализует Planner — заменить на `Planner::Plan(ast, session) → PhysicalPlan` |
+| 3 | `ExecuteResult ExecutePlan(const PlanResult&, SessionContext*)` | ⚠️ ЗАГОТОВКА ДЛЯ ЧЕЛОВЕКА 2 | Заглушка. Человек 2 ещё не писал код. Когда реализует Executor — заменить на `Executor::Run(plan, session) → QueryResult` |
+
+Внутри `Execute()` вызов идёт строго по порядку:
+```cpp
+ParseResult parse_res = Parse(sql);      // ЗАГОТОВКА ДЛЯ ЧЕЛОВЕКА 2
+PlanResult plan_res = Plan(parse_res, session); // ЗАГОТОВКА ДЛЯ ЧЕЛОВЕКА 2
+ExecuteResult exec_res = ExecutePlan(plan_res, session); // ЗАГОТОВКА ДЛЯ ЧЕЛОВЕКА 2
+```
+
+### 5.2. Обработка USE database
+
+Обрабатывается **до** фаз Parse/Plan/Execute, локально в QueryProcessor. Не требует Parser.
+
+**Файл:** `src/server/query_processor.cpp` — функция `Execute()`, блок `if (cmd.rfind("use ", 0) == 0)`.
+
+### 5.3. Контракт ошибок (согласовать с человеком 2)
+
+- ParseError → префикс `[parse]`, код `StatusCode::kParseError`
+- BindError / SemanticError → префикс `[plan]`, код `StatusCode::kBindError`
+- PlanError → префикс `[plan]`, код `StatusCode::kPlanError`
+- ExecutionError / RuntimeError → префикс `[execute]`, код `StatusCode::kExecutionError`
+
+---
+
+## Этап 6. Pipeline end-to-end
+
+### 6.1. apps/cli — клиентское приложение
+
+**Файл:** `apps/cli/main.cpp` (код человека 1, переписан человеком 3)
+
+| Компонент | Описание |
+|-----------|----------|
+| `db::TcpClient client(config.host, config.port)` | создаёт tcp-клиент, подключается к серверу |
+| `send_sql(lambda)` | отправляет SQL на сервер, получает Response, выводит JSON |
+| `execute_buffer(lambda)` | накапливает символы до `;`, затем выполняет команду |
+| Обработка `USE` | выполняется **локально** в CLI, не отправляется на сервер |
+| Пакетный режим | `./prog script.txt` — читает файл, разбивает на команды по `;` |
+| Интерактивный режим | `./prog` — читает stdin, разбивает на команды по `;` |
+
+### 6.2. apps/server — серверное приложение
+
+**Файл:** `apps/server/main.cpp` (код человека 1, переписан человеком 3)
+
+| Компонент | Описание |
+|-----------|----------|
+| `db::Database db(config)` | создаёт композиционный объект (код человека 1) |
+| `db.Start()` | инициализация окружения (TODO: интеграция с человеком 1) |
+| `db::QueryProcessor qp(&db)` | создаёт обработчик SQL (код человека 1) |
+| `db::StorageService service(&qp)` | создаёт сетевой entrypoint (код человека 1) |
+| `db::TcpServer server(...)` | создаёт tcp-сервер (код человека 1) |
+| `server.Start(lambda)` | запускает сервер с handler = `service.HandleRequest` |
+| Аргументы | `--port`, `--host`, `--data_dir` |
+
+Pipeline в действии:
+```
+CLI(sql) → TcpClient.Send(Request) → TcpServer → Session+Request →
+StorageService.HandleRequest → SessionContext → QueryProcessor.Execute →
+Parse(ЗАГЛУШКА) / Plan(ЗАГЛУШКА) / ExecutePlan(ЗАГЛУШКА) → QueryResult →
+Response → TcpServer → TcpClient → CLI(json)
+```
+
+---
+
+## Этап 7. Интеграционные тесты pipeline
+
+### 7.1. Сетевые тесты
+
+**Файл:** `tests/network/protocol_tests.cpp` (код человека 1, переписан человеком 3)
+
+| Тест | Описание |
+|------|----------|
+| `RequestRoundTripEmpty` | пустой Request сериализуется и десериализуется корректно |
+| `RequestRoundTripWithData` | Request с полями round-trip через Protocol |
+| `RequestEscapesQuotesAndNewlines` | спецсимволы в sql не ломают json |
+| `ResponseRoundTripEmpty` | пустой Response round-trip |
+| `ResponseRoundTripError` | Response с ошибкой round-trip |
+| `ResponseRoundTripWithRows` | Response с колонками, строками, null, bool round-trip |
+| `DeserializeRejectsTruncated` | данные < 4 байт отвергаются |
+
+**Файл:** `tests/network/request_response_tests.cpp` (код человека 1, переписан человеком 3)
+
+| Тест | Описание |
+|------|----------|
+| `ClientServerRoundTrip` | клиент подключается, отправляет Request, получает Response через EchoHandler |
+| `MultipleSequentialRequests` | три запроса в одном соединении, все проходят |
+
+### 7.2. Интеграционные тесты сервера
+
+**Файл:** `tests/integration/database_tests.cpp` (код человека 1, переписан человеком 3)
+
+| Тест | Описание |
+|------|----------|
+| `StartStopLifecycle` | Database стартует и останавливается без падений (engine — заглушка) |
+| `RestartPreservesDataDir` | перезапуск не ломает data_dir |
+
+**Файл:** `tests/integration/query_processor_tests.cpp` (код человека 1, переписан человеком 3)
+
+| Тест | Описание |
+|------|----------|
+| `UseDatabase` | USE обновляет `SessionContext.current_db` |
+| `UnsupportedQueryReturnsError` | Любой запрос кроме USE возвращает `[parse] parser not implemented` (ЗАГОТОВКА ДЛЯ ЧЕЛОВЕКА 2) |
+
+---
+
+## Этап 8. Приложения
+
+### 8.1. apps/server
+
+**Файл:** `apps/server/main.cpp`
+
+- Запускает полный pipeline: Database → QueryProcessor → StorageService → TcpServer.
+- Код человека 1, переписан человеком 3 (комментарии).
+
+### 8.2. apps/cli
+
+**Файл:** `apps/cli/main.cpp`
+
+- Интерактивный и пакетный режим.
+- Локальная обработка USE.
+- Отправка остальных запросов на сервер через TcpClient.
+- Код человека 1, переписан человеком 3 (комментарии).
+
+### 8.3. apps/storage_node
+
+**Файл:** `apps/storage_node/main.cpp`
+
+- **Заглушка.** Код человека 1 (StorageNodeEngine) закомментирован до интеграции.
+- Человек 3 отметил: `// TODO: код человека 1 ещё не предоставлен`.
+- При запуске выводит сообщение и ждёт нажатия Enter.
+
+---
+
+## Заготовки для других участников
+
+### Заготовки ТОЛЬКО для Человека 2 (parser / planner / execution)
+
+Человек 2 ещё **не писал свой код вообще**.
+
+**Файл:** `src/server/query_processor.cpp`
+
+1. `ParseResult Parse(const std::string& sql)`
+   - Сейчас: `ok=false`, `error="parser not implemented (stub for person 2)"`
+   - Ожидается: реальный `Parser::Parse(sql) → AST`
+
+2. `PlanResult Plan(const ParseResult& ast, SessionContext* session)`
+   - Сейчас: `ok=false`, `error="planner not implemented (stub for person 2)"`
+   - Ожидается: реальный `Planner::Plan(ast, session) → PhysicalPlan`
+
+3. `ExecuteResult ExecutePlan(const PlanResult& plan, SessionContext* session)`
+   - Сейчас: `ok=false`, `error="executor not implemented (stub for person 2)"`
+   - Ожидается: реальный `Executor::Run(plan, session) → QueryResult`
+
+### Код Человека 1 (StorageNodeEngine)
+
+**Файлы:** `include/server/database.h`, `src/server/database.cpp`, `apps/storage_node/main.cpp`
+
+- Весь код написан человеком 1. Человек 3 добавил комментарии и forward declaration.
+- `StorageNodeEngine` — forward declaration, реализация у человека 1.
+- `Database::Start/Stop/engine()` — помечены `TODO: код человека 1 ещё не предоставлен`.
+- `apps/storage_node` — вызовы engine закомментированы до готовности человека 1.
+
+---
+
+## Сборка и запуск
+
+```bash
+cd build
+cmake .. -DCOURSEDB_BUILD_TESTS=ON
+cmake --build . --config Release --parallel 1
+ctest -C Release --output-on-failure
+```
+
+**Текущий статус:** 13/13 тестов проходят. Pipeline end-to-end работает на уровне сети и контрактов. SQL-запросы кроме USE возвращают ошибку парсера — это ожидаемое поведение, так как человек 2 ещё не написал Parser/Planner/Executor.
