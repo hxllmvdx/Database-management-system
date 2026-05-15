@@ -9,7 +9,7 @@ namespace db {
 class Executor {
 public:
     virtual ~Executor() = default;
-    virtual QueryResult Execute(const PhysicalPlan& plan, ExecutorContext* ctx) = 0;
+    virtual QueryResult Execute(const PhysicalPlan& plan, ExecutorContext* ctx);
 };
 
 }
