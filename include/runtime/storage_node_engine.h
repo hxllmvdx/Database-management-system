@@ -51,7 +51,14 @@ public:
     IndexManager& index_manager();
 
 private:
+    Status OpenTable(const std::string& db_name,
+                     const std::string& table_name,
+                     TableStorage** out);
+
     Config config_;
+    CatalogManager catalog_manager_;
+    IndexManager index_manager_;
+    std::unordered_map<std::string, std::unique_ptr<TableStorage>> open_tables_;
 };
 
 }
