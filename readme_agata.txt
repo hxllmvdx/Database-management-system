@@ -1,5 +1,16 @@
 readme_agata.txt
 
+заглушки
+- src/runtime/storage_node_engine.cpp чел1 (транзакции, версионирование, flush-поведение)
+- src/transaction/*.cpp чел 1 (TransactionManager, LockManager)
+- src/versioning/*.cpp — чел 1 (VersionLog, VersionRecord, Revert)
+- src/planner/optimizer.cpp — чел 2 
+- tests/parser/ast_tests.cpp — чел 2
+- tests/planner/binder_tests.cpp, optimizer_tests.cpp  чел 2
+- tests/execution/seq_scan_executor_tests.cpp, insert_executor_tests.cpp, update_executor_tests.cpp, delete_executor_tests.cpp — чел 2
+- tests/transaction/transaction_manager_tests.cpp, lock_manager_tests.cpp — чел 1
+
+
 include/runtime/storage_node_engine.h
 - добавлены приватные члены: catalog_manager_, index_manager_, open_tables_
 - добавлен приватный метод OpenTable для ленивого открытия таблиц
@@ -8,7 +19,8 @@ include/runtime/storage_node_engine.h
 src/runtime/storage_node_engine.cpp
 - полная реализация StorageNodeEngine как композита над готовыми модулями CatalogManager, TableStorage, IndexManager
 - методы: Start, Stop, CreateDatabase, DropDatabase, CreateTable, DropTable, Insert, Update, Delete, ScanTable, GetTableDescriptor
-- OpenTable реализует кэш открытых таблиц по ключу db_name.table_name
+- OpenTable реализует кэш открытых таблиц по ключу db_name.table_нэйм
+заглушка чел1
 
 include/server/database.h
 - добавлен приватный член Config config_
@@ -48,6 +60,9 @@ apps/cli/main.cpp
 apps/storage_node/main.cpp
 - локальный repl без сети: читает sql из stdin, выполняет через Database + QueryProcessor напрямую
 
+apps/storage_node/CMakeLists.txt
+- добавлена линковка coursedb_server (ранее линковался только coursedb_storage, что приводило к ошибкам линковки)
+
 tests/network/protocol_tests.cpp
 - round-trip тесты Request и Response
 - проверка защиты от битых данных
@@ -58,17 +73,34 @@ tests/network/request_response_tests.cpp
 tests/integration/database_tests.cpp
 - тест жизненного цикла Database (Start / Stop)
 - тест доступа к StorageNodeEngine и создания базы
+- тест перезапуска Database с сохранением данных (RestartPreservesData)
 
 tests/integration/query_processor_tests.cpp
 - end-to-end sql: CREATE DATABASE -> USE -> CREATE TABLE -> INSERT -> SELECT
 - проверка обработки синтаксической ошибки
+- вставка 100 строк и SELECT WHERE (InsertManyAndSelectWhere)
+- DELETE + SELECT (DeleteThenSelectReturnsEmpty)
+- UPDATE + SELECT (UpdateThenSelectReturnsNewValue)
+- работа с несколькими таблицами (MultipleTablesSimultaneously)
+- проверка, что ошибка в запросе не ломает состояние БД (ErrorDoesNotCorruptDatabaseState)
+
+tests/integration/network_e2e_tests.cpp
+- полный сквозной сетевой тест: TcpClient -> TcpServer -> StorageService -> QueryProcessor -> Database
+- CREATE DATABASE / USE / CREATE TABLE / INSERT / SELECT через сеть
+
+tests/CMakeLists.txt
+- добавлен integration/network_e2e_tests.cpp в список sources цели coursedb_integration_tests
 
 src/CMakeLists.txt
 - добавлена линковка ws2_32.lib под Windows для цели coursedb_network
 
-заглушки:
+пустые translation unit (не заглушки, не ожидают доработки):
 src/network/request.cpp
 src/network/response.cpp
 src/network/session.cpp
 src/server/query_result.cpp
 src/server/session_context.cpp
+- структуры полностью описаны в заголовках (plain data), методов нет
+- cpp-файлы нужны только потому, что они перечислены в CMakeLists.txt
+- коммитов от других участников не ожидается
+
