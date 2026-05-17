@@ -188,4 +188,22 @@ Status TableStorage::Delete(RowId rid) {
     return row_store_.Delete(rid);
 }
 
+Status TableStorage::Restore(RowId rid, const Tuple& tuple) {
+    if (!is_open_) {
+        return Status::Error(StatusCode::kInternalError, "TableStorage is not opened");
+    }
+
+    Tuple prepared;
+    Status status = PrepareTupleForWrite(tuple, &prepared);
+    if (!status.ok()) {
+        return status;
+    }
+
+    Row row;
+    row.rid = rid;
+    row.tuple = prepared;
+    row.deleted = false;
+    return row_store_.Restore(row);
+}
+
 }

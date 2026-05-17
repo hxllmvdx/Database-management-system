@@ -37,6 +37,7 @@ coursedb_add_test(coursedb_storage_tests
         storage/bstar_tree_tests.cpp
         storage/index_manager_tests.cpp
         storage/version_log_tests.cpp
+        storage/storage_node_engine_tests.cpp
     LIBRARIES
         coursedb_storage
         coursedb_execution

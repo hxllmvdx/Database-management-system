@@ -178,6 +178,25 @@ TEST_F(TableStorageTest, DeleteMakesRowUnavailableAndScanReturnsOnlyLiveRows) {
     EXPECT_EQ(rows[0].rid, second_rid);
 }
 
+TEST_F(TableStorageTest, RestoreRevivesDeletedRowWithSameRidAndValidation) {
+    db::TableStorage storage = CreateStorage();
+    ASSERT_TRUE(storage.Open().ok());
+
+    db::RowId rid;
+    ASSERT_TRUE(storage.Insert(MakeTuple({db::Value::Int(1), db::Value::String("before")}), &rid).ok());
+    ASSERT_TRUE(storage.Delete(rid).ok());
+
+    ASSERT_TRUE(storage.Restore(rid, MakeTuple({db::Value::Int(2), db::Value::String("after")})).ok());
+
+    db::Row row;
+    ASSERT_TRUE(storage.Get(rid, &row).ok());
+    ExpectTupleEquals(row.tuple,
+                      MakeTuple({db::Value::Int(2),
+                                 db::Value::String("after"),
+                                 db::Value::Bool(true),
+                                 db::Value::Null()}));
+}
+
 TEST_F(TableStorageTest, ReopenPreservesRows) {
     db::RowId rid;
 

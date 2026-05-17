@@ -18,6 +18,7 @@ public:
     Status Get(RowId rid, Row* out);
     Status Update(RowId rid, const Tuple& tuple);
     Status Delete(RowId rid);
+    Status Restore(RowId rid, const Tuple& tuple);
     Status Scan(std::vector<Row>* out);
 
     const TableDescriptor& descriptor() const { return descriptor_; }
