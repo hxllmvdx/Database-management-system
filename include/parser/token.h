@@ -12,6 +12,8 @@ enum class TokenType {
     kSemicolon,
     kLParen,
     kRParen,
+    kDot,
+    kStar,
     kEq,
     kNe,
     kLt,

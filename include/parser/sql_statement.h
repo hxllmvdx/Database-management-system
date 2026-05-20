@@ -42,31 +42,42 @@ struct UseDatabaseStatement : SqlStatement {
 };
 
 struct CreateTableStatement : SqlStatement {
+    std::string database_name;
     std::string table_name;
     TableSchema schema;
     StatementKind kind() const override { return StatementKind::kCreateTable; }
 };
 
 struct DropTableStatement : SqlStatement {
+    std::string database_name;
     std::string table_name;
     StatementKind kind() const override { return StatementKind::kDropTable; }
 };
 
 struct InsertStatement : SqlStatement {
+    std::string database_name;
     std::string table_name;
     std::vector<std::string> columns;
     std::vector<std::vector<Value>> rows;
     StatementKind kind() const override { return StatementKind::kInsert; }
 };
 
+struct SelectItem {
+    std::string column;
+    std::string alias;
+};
+
 struct SelectStatement : SqlStatement {
+    std::string database_name;
     std::string table_name;
-    std::vector<std::string> columns;
+    bool select_all = false;
+    std::vector<SelectItem> columns;
     std::unique_ptr<Expr> where;
     StatementKind kind() const override { return StatementKind::kSelect; }
 };
 
 struct UpdateStatement : SqlStatement {
+    std::string database_name;
     std::string table_name;
     std::vector<std::pair<std::string, Value>> assignments;
     std::unique_ptr<Expr> where;
@@ -74,12 +85,14 @@ struct UpdateStatement : SqlStatement {
 };
 
 struct DeleteStatement : SqlStatement {
+    std::string database_name;
     std::string table_name;
     std::unique_ptr<Expr> where;
     StatementKind kind() const override { return StatementKind::kDelete; }
 };
 
 struct RevertStatement : SqlStatement {
+    std::string database_name;
     std::string table_name;
     std::int64_t timestamp_ms = 0;
     StatementKind kind() const override { return StatementKind::kRevert; }
