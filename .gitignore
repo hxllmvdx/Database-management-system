@@ -98,7 +98,6 @@ Desktop.ini
 *.sqlite3
 
 data/
-storage/
 wal/
 logs/
 
@@ -107,3 +106,5 @@ logs/
 # =========================
 test_data/
 tmp/
+
+.cache/
