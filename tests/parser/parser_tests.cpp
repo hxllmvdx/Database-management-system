@@ -1,7 +1,32 @@
 #include <gtest/gtest.h>
 
+#include <cstdint>
+#include <ctime>
+
 #include "parser/parser.h"
 #include "parser/parse_error.h"
+
+namespace {
+
+std::int64_t LocalTimestampMs(int year,
+                              int month,
+                              int day,
+                              int hour,
+                              int minute,
+                              int second,
+                              int millis) {
+    std::tm tm{};
+    tm.tm_year = year - 1900;
+    tm.tm_mon = month - 1;
+    tm.tm_mday = day;
+    tm.tm_hour = hour;
+    tm.tm_min = minute;
+    tm.tm_sec = second;
+    tm.tm_isdst = -1;
+    return static_cast<std::int64_t>(std::mktime(&tm)) * 1000 + millis;
+}
+
+}  // namespace
 
 TEST(ParserTests, ParsesCreateTableWithIndexedAndNotNullColumns) {
     db::Parser parser;
@@ -50,4 +75,21 @@ TEST(ParserTests, ParsesSelectAliasesBetweenLike) {
 TEST(ParserTests, RejectsMixedCaseKeywords) {
     db::Parser parser;
     EXPECT_THROW(parser.Parse("SeLeCt * FROM users;"), db::ParseError);
+}
+
+TEST(ParserTests, ParsesRevertTimestampToEpochMilliseconds) {
+    db::Parser parser;
+    auto stmt = parser.Parse("REVERT users 1970.01.01-03:00:01.250;");
+
+    ASSERT_EQ(stmt->kind(), db::StatementKind::kRevert);
+    const auto& revert = static_cast<const db::RevertStatement&>(*stmt);
+    EXPECT_EQ(revert.table_name, "users");
+    EXPECT_EQ(revert.timestamp_ms, LocalTimestampMs(1970, 1, 1, 3, 0, 1, 250));
+}
+
+TEST(ParserTests, RejectsUpdateAndDeleteWithoutWhere) {
+    db::Parser parser;
+
+    EXPECT_THROW(parser.Parse("UPDATE users SET name = \"Ann\";"), db::ParseError);
+    EXPECT_THROW(parser.Parse("DELETE FROM users;"), db::ParseError);
 }

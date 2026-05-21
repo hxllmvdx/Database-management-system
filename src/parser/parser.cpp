@@ -2,8 +2,10 @@
 
 #include <algorithm>
 #include <cctype>
+#include <ctime>
 #include <cstdlib>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -32,6 +34,73 @@ bool IsSingleCaseWord(const std::string& word) {
         }
     }
     return !(has_lower && has_upper);
+}
+
+std::optional<std::int64_t> ParseRevertTimestampMs(const std::string& raw) {
+    if (raw.size() < 23) {
+        return std::nullopt;
+    }
+
+    const auto IsDigitAt = [&](std::size_t pos) {
+        return pos < raw.size() && std::isdigit(static_cast<unsigned char>(raw[pos]));
+    };
+    const auto Require = [&](std::size_t pos, char expected) {
+        return pos < raw.size() && raw[pos] == expected;
+    };
+    const auto Number = [&](std::size_t pos, std::size_t count) -> std::optional<int> {
+        int value = 0;
+        for (std::size_t i = 0; i < count; ++i) {
+            if (!IsDigitAt(pos + i)) {
+                return std::nullopt;
+            }
+            value = value * 10 + (raw[pos + i] - '0');
+        }
+        return value;
+    };
+
+    if (!Require(4, '.') || !Require(7, '.') || !Require(10, '-') ||
+        !Require(13, ':') || !Require(16, ':') || !Require(19, '.')) {
+        return std::nullopt;
+    }
+
+    const std::optional<int> year = Number(0, 4);
+    const std::optional<int> month = Number(5, 2);
+    const std::optional<int> day = Number(8, 2);
+    const std::optional<int> hour = Number(11, 2);
+    const std::optional<int> minute = Number(14, 2);
+    const std::optional<int> second = Number(17, 2);
+    const std::optional<int> millis = Number(20, 3);
+    if (!year || !month || !day || !hour || !minute || !second || !millis) {
+        return std::nullopt;
+    }
+
+    if (*month < 1 || *month > 12 || *day < 1 || *day > 31 ||
+        *hour < 0 || *hour > 23 || *minute < 0 || *minute > 59 ||
+        *second < 0 || *second > 59) {
+        return std::nullopt;
+    }
+
+    for (std::size_t i = 23; i < raw.size(); ++i) {
+        if (!std::isdigit(static_cast<unsigned char>(raw[i]))) {
+            return std::nullopt;
+        }
+    }
+
+    std::tm tm{};
+    tm.tm_year = *year - 1900;
+    tm.tm_mon = *month - 1;
+    tm.tm_mday = *day;
+    tm.tm_hour = *hour;
+    tm.tm_min = *minute;
+    tm.tm_sec = *second;
+    tm.tm_isdst = -1;
+
+    const std::time_t seconds_since_epoch = std::mktime(&tm);
+    if (seconds_since_epoch == static_cast<std::time_t>(-1)) {
+        return std::nullopt;
+    }
+
+    return static_cast<std::int64_t>(seconds_since_epoch) * 1000 + *millis;
 }
 
 std::unique_ptr<db::ColumnRefExpr> Column(std::string name) {
@@ -348,7 +417,8 @@ private:
             Expect(db::TokenType::kEq, "=");
             stmt->assignments.push_back({std::move(column), ParseLiteralValue()});
         } while (Match(db::TokenType::kComma));
-        stmt->where = ParseWhereIfPresent();
+        ExpectKeyword("WHERE");
+        stmt->where = ParseOr();
         Finish();
         return stmt;
     }
@@ -357,7 +427,8 @@ private:
         ExpectKeyword("FROM");
         auto stmt = std::make_unique<db::DeleteStatement>();
         ParseQualifiedName(&stmt->database_name, &stmt->table_name);
-        stmt->where = ParseWhereIfPresent();
+        ExpectKeyword("WHERE");
+        stmt->where = ParseOr();
         Finish();
         return stmt;
     }
@@ -369,13 +440,11 @@ private:
             throw db::ParseError("expected revert timestamp");
         }
         const std::string raw = Consume().lexeme;
-        std::string digits;
-        for (char ch : raw) {
-            if (std::isdigit(static_cast<unsigned char>(ch))) {
-                digits.push_back(ch);
-            }
+        std::optional<std::int64_t> timestamp_ms = ParseRevertTimestampMs(raw);
+        if (!timestamp_ms.has_value()) {
+            throw db::ParseError("expected timestamp in yyyy.mm.dd-hh:mm:ss.mmm format");
         }
-        stmt->timestamp_ms = digits.empty() ? 0 : std::strtoll(digits.c_str(), nullptr, 10);
+        stmt->timestamp_ms = *timestamp_ms;
         Finish();
         return stmt;
     }
