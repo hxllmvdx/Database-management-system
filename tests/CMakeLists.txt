@@ -105,6 +105,7 @@ coursedb_add_test(coursedb_integration_tests
     SOURCES
         integration/database_tests.cpp
         integration/query_processor_tests.cpp
+        integration/network_e2e_tests.cpp
     LIBRARIES
         coursedb_server
         coursedb_execution

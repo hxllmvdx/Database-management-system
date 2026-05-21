@@ -1,4 +1,5 @@
 #pragma once
+#include <unordered_map>
 #include "../network/request.h"
 #include "../network/response.h"
 #include "../network/session.h"
@@ -14,6 +15,7 @@ public:
 
 private:
     QueryProcessor* processor_;
+    std::unordered_map<std::string, SessionContext> session_contexts_;
 };
 
 }

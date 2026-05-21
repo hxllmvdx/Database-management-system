@@ -1,6 +1,8 @@
 #pragma once
+#include <atomic>
 #include <functional>
 #include <string>
+#include <thread>
 #include "../common/status.h"
 #include "request.h"
 #include "response.h"
@@ -20,6 +22,9 @@ public:
 private:
     std::string host_;
     int port_;
+    void* listen_socket_ = nullptr;
+    std::atomic<bool> running_{false};
+    std::thread thread_;
 };
 
 }

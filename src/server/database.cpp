@@ -1,17 +1,26 @@
 #include "server/database.h"
+#include "common/config.h"
+#include "common/file_utils.h"
+#include "common/status.h"
 
-#include <utility>
+namespace db {
 
-db::Database::Database(Config config) : engine_(std::move(config)) {}
+Database::Database(Config config)
+    : config_(std::move(config)),
+      engine_(config_) {}
 
-db::Status db::Database::Start() {
+Status Database::Start() {
+    Status status = file_utils::EnsureDir(config_.data_dir);
+    if (!status.ok()) return status;
     return engine_.Start();
 }
 
-db::Status db::Database::Stop() {
+Status Database::Stop() {
     return engine_.Stop();
 }
 
-db::StorageNodeEngine& db::Database::engine() {
+StorageNodeEngine& Database::engine() {
     return engine_;
 }
+
+} // namespace db

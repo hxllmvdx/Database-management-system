@@ -13,6 +13,7 @@ public:
     StorageNodeEngine& engine();
 
 private:
+    Config config_;
     StorageNodeEngine engine_;
 };
 
