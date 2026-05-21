@@ -20,7 +20,11 @@ std::string FormatRevertTimestamp(std::chrono::system_clock::time_point point) {
         point.time_since_epoch()) % 1000;
     const std::time_t raw_time = std::chrono::system_clock::to_time_t(point);
     std::tm local_time{};
+#ifdef _WIN32
+    localtime_s(&local_time, &raw_time);
+#else
     localtime_r(&raw_time, &local_time);
+#endif
 
     std::ostringstream out;
     out << std::put_time(&local_time, "%Y.%m.%d-%H:%M:%S")
@@ -40,9 +44,11 @@ protected:
     }
 
     void TearDown() override {
+        processor.reset();
         if (database != nullptr) {
             (void)database->Stop();
         }
+        database.reset();
         std::filesystem::remove_all(config.data_dir);
     }
 
