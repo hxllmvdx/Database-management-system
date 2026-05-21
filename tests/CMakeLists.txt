@@ -72,6 +72,7 @@ coursedb_add_test(coursedb_execution_tests
         execution/insert_executor_tests.cpp
         execution/update_executor_tests.cpp
         execution/delete_executor_tests.cpp
+        execution/executor_crud_tests.cpp
         execution/expression_tests.cpp
     LIBRARIES
         coursedb_execution
