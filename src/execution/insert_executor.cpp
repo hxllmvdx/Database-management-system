@@ -74,16 +74,6 @@ db::Status db::InsertExecutor::Execute(const InsertPhysicalPlan& plan,
         RowId rid;
         status = ctx->engine->Insert(plan.database_name, plan.table_name, tuple, &rid);
         if (!status.ok()) return status;
-        for (const IndexDescriptor& index : table.indexes) {
-            const int column_index = table.schema.FindColumn(index.column_name);
-            if (column_index >= 0) {
-                status = ctx->engine->index_manager().Insert(
-                    index.name,
-                    tuple.values[static_cast<std::size_t>(column_index)],
-                    rid);
-                if (!status.ok()) return status;
-            }
-        }
         ++result.affected_rows;
     }
     *out = std::move(result);

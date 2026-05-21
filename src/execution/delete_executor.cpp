@@ -53,15 +53,6 @@ db::Status db::DeleteExecutor::Execute(const DeletePhysicalPlan& plan,
         }
         status = ctx->engine->Delete(plan.database_name, plan.table_name, row.rid);
         if (!status.ok()) return status;
-        for (const IndexDescriptor& index : table.indexes) {
-            const int column_index = table.schema.FindColumn(index.column_name);
-            if (column_index >= 0) {
-                status = ctx->engine->index_manager().Delete(
-                    index.name,
-                    row.tuple.values[static_cast<std::size_t>(column_index)]);
-                if (!status.ok()) return status;
-            }
-        }
         ++result.affected_rows;
     }
     *out = std::move(result);

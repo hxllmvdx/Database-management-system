@@ -29,19 +29,6 @@ db::Status db::CreateTableExecutor::Execute(const CreateTablePhysicalPlan& plan,
     if (!status.ok()) {
         return status;
     }
-    for (const IndexDescriptor& index : plan.descriptor.indexes) {
-        const int column_index = plan.descriptor.schema.FindColumn(index.column_name);
-        if (column_index < 0) {
-            return Status::Error(StatusCode::kExecutionError, "index column is not in schema");
-        }
-        const ColumnSchema& column = plan.descriptor.schema.columns[static_cast<std::size_t>(column_index)];
-        const ValueType key_type = column.type == ColumnType::kInt ? ValueType::kInt
-                                                                   : ValueType::kString;
-        status = ctx->engine->index_manager().CreateIndex(index, key_type);
-        if (!status.ok()) {
-            return status;
-        }
-    }
     *out = QueryResult{};
     return Status::Ok();
 }
