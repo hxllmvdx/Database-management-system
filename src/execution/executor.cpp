@@ -7,6 +7,7 @@
 #include "execution/insert_executor.h"
 #include "execution/seq_scan_executor.h"
 #include "execution/update_executor.h"
+#include "versioning/revert.h"
 
 namespace {
 
@@ -74,8 +75,20 @@ db::QueryResult db::Executor::Execute(const PhysicalPlan& plan, ExecutorContext*
             return UpdateExecutor().Execute(plan, ctx);
         case PhysicalPlanType::kDelete:
             return DeleteExecutor().Execute(plan, ctx);
-        case PhysicalPlanType::kRevert:
-            return ErrorResult("REVERT execution requires storage/versioning API integration");
+        case PhysicalPlanType::kRevert: {
+            const auto& p = static_cast<const RevertPhysicalPlan&>(plan);
+            QueryResult result;
+            RevertService revert(ctx->engine);
+            Status status = revert.RevertTableToTimestamp(
+                p.database_name,
+                p.table_name,
+                p.timestamp_ms);
+            if (!status.ok()) {
+                result.ok = false;
+                result.error = status.message();
+            }
+            return result;
+        }
     }
     return ErrorResult("unsupported physical plan");
 }
