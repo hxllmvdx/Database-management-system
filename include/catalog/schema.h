@@ -10,6 +10,7 @@ namespace db {
 enum class ColumnType {
     kInt,
     kString,
+    kBool,
 };
 
 struct ColumnSchema {
@@ -24,7 +25,12 @@ class TableSchema {
 public:
     std::vector<ColumnSchema> columns;
 
+    std::size_t column_count() const { return columns.size(); }
+    bool empty() const { return columns.empty(); }
+
     int FindColumn(const std::string& name) const;
+    const ColumnSchema* FindColumnSchema(const std::string& name) const;
+    ColumnSchema* FindColumnSchema(const std::string& name);
 };
 
 }

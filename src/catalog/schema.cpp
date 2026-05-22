@@ -8,3 +8,19 @@ int db::TableSchema::FindColumn(const std::string& name) const {
     }
     return -1;
 }
+
+const db::ColumnSchema* db::TableSchema::FindColumnSchema(const std::string& name) const {
+    const int index = FindColumn(name);
+    if (index < 0) {
+        return nullptr;
+    }
+    return &columns[static_cast<std::size_t>(index)];
+}
+
+db::ColumnSchema* db::TableSchema::FindColumnSchema(const std::string& name) {
+    const int index = FindColumn(name);
+    if (index < 0) {
+        return nullptr;
+    }
+    return &columns[static_cast<std::size_t>(index)];
+}

@@ -36,7 +36,7 @@ protected:
         desc.database_name = "testdb";
         desc.table_name = table_name;
         desc.data_file = (root_dir_ / "testdb" / "tables" / (table_name + ".tbl")).string();
-        desc.index_file = (root_dir_ / "testdb" / "indexes" / (table_name + ".idx")).string();
+        desc.index_dir = (root_dir_ / "testdb" / "indexes" / table_name).string();
 
         db::ColumnSchema id_column;
         id_column.name = "id";
@@ -56,6 +56,7 @@ protected:
         index.name = table_name + "_id_idx";
         index.table_name = table_name;
         index.column_name = "id";
+        index.file_path = (root_dir_ / "testdb" / "indexes" / table_name / (index.name + ".idx")).string();
         index.unique = true;
         desc.indexes.push_back(index);
 
@@ -67,7 +68,7 @@ protected:
         EXPECT_EQ(actual.database_name, expected.database_name);
         EXPECT_EQ(actual.table_name, expected.table_name);
         EXPECT_EQ(actual.data_file, expected.data_file);
-        EXPECT_EQ(actual.index_file, expected.index_file);
+        EXPECT_EQ(actual.index_dir, expected.index_dir);
 
         ASSERT_EQ(actual.schema.columns.size(), expected.schema.columns.size());
         for (std::size_t i = 0; i < actual.schema.columns.size(); ++i) {
@@ -90,6 +91,7 @@ protected:
             EXPECT_EQ(lhs.name, rhs.name);
             EXPECT_EQ(lhs.table_name, rhs.table_name);
             EXPECT_EQ(lhs.column_name, rhs.column_name);
+            EXPECT_EQ(lhs.file_path, rhs.file_path);
             EXPECT_EQ(lhs.unique, rhs.unique);
         }
     }
@@ -177,7 +179,7 @@ TEST_F(CatalogManagerTest, CreateTableRejectsDuplicateColumns) {
     desc.database_name = "testdb";
     desc.table_name = "broken";
     desc.data_file = (root_dir_ / "testdb" / "tables" / "broken.tbl").string();
-    desc.index_file = (root_dir_ / "testdb" / "indexes" / "broken.idx").string();
+    desc.index_dir = (root_dir_ / "testdb" / "indexes" / "broken").string();
 
     db::ColumnSchema first;
     first.name = "dup";
@@ -210,4 +212,4 @@ TEST_F(CatalogManagerTest, GetTableFailsForCorruptedMetadata) {
     EXPECT_FALSE(status.ok());
 }
 
-}  // namespace
+}  

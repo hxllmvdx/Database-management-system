@@ -9,9 +9,11 @@
 #include <utility>
 #include <vector>
 
+#include "catalog/schema.h"
 #include "common/binary_io.h"
 #include "common/catalog_serialization.h"
 #include "common/file_utils.h"
+#include "execution/value.h"
 
 namespace {
 
@@ -49,10 +51,14 @@ std::string DefaultTableDataPath(const std::string& root_dir,
     return TablesDirPath(root_dir, db_name) + "/" + table_name + ".tbl";
 }
 
-std::string DefaultTableIndexPath(const std::string& root_dir,
-                                  const std::string& db_name,
-                                  const std::string& table_name) {
-    return IndexesDirPath(root_dir, db_name) + "/" + table_name + ".idx";
+std::string DefaultTableIndexDir(const std::string& root_dir,
+                                 const std::string& db_name,
+                                 const std::string& table_name) {
+    return IndexesDirPath(root_dir, db_name) + "/" + table_name;
+}
+
+std::string DefaultIndexFilePath(const std::string& index_dir, const std::string& index_name) {
+    return index_dir + "/" + index_name + ".idx";
 }
 
 bool IsValidName(std::string_view name) {
@@ -112,6 +118,10 @@ db::Status ValidateColumnSchema(const db::ColumnSchema& column) {
         return db::Status::Error(db::StatusCode::kInvalidArgument,
                                  "Invalid default value for string column");
     }
+    if (column.type == db::ColumnType::kBool && default_type != db::ValueType::kBool) {
+        return db::Status::Error(db::StatusCode::kInvalidArgument,
+                                 "Invalid default value for bool column");
+    }
 
     return db::Status::Ok();
 }
@@ -152,6 +162,9 @@ db::Status ValidateIndexDescriptor(const db::IndexDescriptor& index,
         return db::Status::Error(db::StatusCode::kInvalidArgument,
                                  "Index column does not exist in table schema");
     }
+    if (index.file_path.empty()) {
+        return db::Status::Error(db::StatusCode::kInvalidArgument, "Index file path is empty");
+    }
 
     return db::Status::Ok();
 }
@@ -188,8 +201,8 @@ db::Status ValidateTableDescriptor(const db::TableDescriptor& desc) {
     if (desc.data_file.empty()) {
         return db::Status::Error(db::StatusCode::kInvalidArgument, "Table data file path is empty");
     }
-    if (desc.index_file.empty()) {
-        return db::Status::Error(db::StatusCode::kInvalidArgument, "Table index file path is empty");
+    if (desc.index_dir.empty()) {
+        return db::Status::Error(db::StatusCode::kInvalidArgument, "Table index directory path is empty");
     }
 
     return db::Status::Ok();
@@ -215,13 +228,16 @@ db::TableDescriptor NormalizeTableDescriptor(const std::string& root_dir,
     if (desc.data_file.empty()) {
         desc.data_file = DefaultTableDataPath(root_dir, desc.database_name, desc.table_name);
     }
-    if (desc.index_file.empty()) {
-        desc.index_file = DefaultTableIndexPath(root_dir, desc.database_name, desc.table_name);
+    if (desc.index_dir.empty()) {
+        desc.index_dir = DefaultTableIndexDir(root_dir, desc.database_name, desc.table_name);
     }
 
     for (db::IndexDescriptor& index : desc.indexes) {
         if (index.table_name.empty()) {
             index.table_name = desc.table_name;
+        }
+        if (index.file_path.empty()) {
+            index.file_path = DefaultIndexFilePath(desc.index_dir, index.name);
         }
     }
 
@@ -255,7 +271,7 @@ db::Status ReadTableMetaFile(const std::string& path, db::TableDescriptor* out) 
     return ValidateTableDescriptor(*out);
 }
 
-}  // namespace
+}  
 
 db::CatalogManager::CatalogManager(std::string root_dir)
     : root_dir_(std::move(root_dir)) {}

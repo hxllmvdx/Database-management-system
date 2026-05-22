@@ -11,8 +11,10 @@ public:
     Status Stop();
 
     StorageNodeEngine& engine();
+    const Config& config() const;
 
 private:
+    Config config_;
     StorageNodeEngine engine_;
 };
 

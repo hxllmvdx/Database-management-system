@@ -13,7 +13,6 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(COURSEDB_BUILD_TESTS "Build tests" ON)
 option(COURSEDB_BUILD_APPS "Build applications" ON)
-option(COURSEDB_BUILD_EXAMPLES "Build examples" OFF)
 option(COURSEDB_ENABLE_WARNINGS_AS_ERRORS "Treat warnings as errors" OFF)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -56,6 +55,26 @@ endif()
 
 include(FetchContent)
 
+# ── nlohmann/json ────────────────────────────────────────────────────────────
+FetchContent_Declare(
+    nlohmann_json
+    URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz
+)
+set(JSON_BuildTests OFF CACHE INTERNAL "")
+FetchContent_MakeAvailable(nlohmann_json)
+
+# ── jwt-cpp ──────────────────────────────────────────────────────────────────
+FetchContent_Declare(
+    jwt-cpp
+    URL https://github.com/Thalhammer/jwt-cpp/archive/refs/tags/v0.7.0.tar.gz
+)
+set(JWT_BUILD_EXAMPLES OFF CACHE INTERNAL "")
+set(JWT_DISABLE_PICOJSON ON CACHE BOOL "use nlohmann instead")
+FetchContent_MakeAvailable(jwt-cpp)
+
+# ── OpenSSL (system) ─────────────────────────────────────────────────────────
+find_package(OpenSSL REQUIRED)
+
 if(COURSEDB_BUILD_TESTS AND COURSEDB_TEST_SOURCES)
     FetchContent_Declare(
         googletest
@@ -76,8 +95,4 @@ endif()
 if(COURSEDB_BUILD_TESTS AND COURSEDB_TEST_SOURCES)
     enable_testing()
     add_subdirectory(tests)
-endif()
-
-if(COURSEDB_BUILD_EXAMPLES)
-    add_subdirectory(examples)
 endif()

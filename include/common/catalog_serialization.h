@@ -5,14 +5,10 @@
 #include "../catalog/index_descriptor.h"
 #include "../catalog/schema.h"
 #include "../catalog/table_descriptor.h"
-#include "../execution/value.h"
 #include "bytes.h"
 #include "status.h"
 
 namespace db::catalog_serialization {
-
-void SerializeValue(const Value& value, ByteBuffer* buffer);
-Status DeserializeValue(const ByteBuffer& bytes, std::size_t* offset, Value* out);
 
 void SerializeColumnSchema(const ColumnSchema& column, ByteBuffer* buffer);
 Status DeserializeColumnSchema(const ByteBuffer& bytes, std::size_t* offset, ColumnSchema* out);
