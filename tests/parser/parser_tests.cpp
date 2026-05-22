@@ -26,7 +26,7 @@ std::int64_t LocalTimestampMs(int year,
     return static_cast<std::int64_t>(std::mktime(&tm)) * 1000 + millis;
 }
 
-}  // namespace
+}  
 
 TEST(ParserTests, ParsesCreateTableWithIndexedAndNotNullColumns) {
     db::Parser parser;

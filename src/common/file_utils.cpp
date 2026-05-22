@@ -4,8 +4,6 @@
 #include <fstream>
 #include <ios>
 
-
-
 db::Status db::file_utils::EnsureDir(const std::string& path) {
     std::error_code ec;
     std::filesystem::create_directories(path, ec);

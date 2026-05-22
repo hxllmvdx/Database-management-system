@@ -34,7 +34,7 @@ db::Status MapColumnTypeToValueType(db::ColumnType type, db::ValueType* out) {
     return db::Status::Error(db::StatusCode::kInternalError, "Unsupported column type");
 }
 
-}  // namespace
+}  
 
 namespace db {
 
@@ -726,4 +726,4 @@ Status StorageNodeEngine::Delete(const std::string& db_name,
     return DeleteInternal(db_name, table_name, rid, true);
 }
 
-}  // namespace db
+}  

@@ -45,7 +45,7 @@ protected:
     std::unique_ptr<db::Binder> binder;
 };
 
-}  // namespace
+}  
 
 TEST_F(BinderTest, RejectsUnknownTableAndUnknownColumns) {
     db::Status status = BindSql(binder.get(), "SELECT * FROM missing WHERE id == 1;");

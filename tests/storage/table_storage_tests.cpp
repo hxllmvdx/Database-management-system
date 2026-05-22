@@ -218,4 +218,4 @@ TEST_F(TableStorageTest, ReopenPreservesRows) {
                                  db::Value::Null()}));
 }
 
-}  // namespace
+}  

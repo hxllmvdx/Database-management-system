@@ -271,7 +271,7 @@ db::Status ReadTableMetaFile(const std::string& path, db::TableDescriptor* out) 
     return ValidateTableDescriptor(*out);
 }
 
-}  // namespace
+}  
 
 db::CatalogManager::CatalogManager(std::string root_dir)
     : root_dir_(std::move(root_dir)) {}

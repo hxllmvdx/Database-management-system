@@ -62,7 +62,7 @@ protected:
     db::SessionContext session;
 };
 
-}  // namespace
+}  
 
 TEST_F(QueryProcessorIntegrationTest, RevertSqlRestoresTableState) {
     ASSERT_TRUE(Exec("CREATE DATABASE testdb;").ok);

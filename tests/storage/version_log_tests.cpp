@@ -182,4 +182,4 @@ TEST_F(VersionLogTest, ReadAllRejectsTruncatedRecordPayload) {
     EXPECT_FALSE(status.ok());
 }
 
-}  // namespace
+}  

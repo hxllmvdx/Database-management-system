@@ -130,7 +130,13 @@ public:
             if (MatchKeyword("TABLE")) {
                 return ParseCreateTable();
             }
-            throw db::ParseError("expected DATABASE or TABLE after CREATE");
+            if (MatchKeyword("USER")) {
+                return ParseCreateUser();
+            }
+            if (MatchKeyword("GROUP")) {
+                return ParseCreateGroup();
+            }
+            throw db::ParseError("expected DATABASE, TABLE, USER or GROUP after CREATE");
         }
         if (MatchKeyword("DROP")) {
             if (MatchKeyword("DATABASE")) {
@@ -145,7 +151,19 @@ public:
                 Finish();
                 return stmt;
             }
-            throw db::ParseError("expected DATABASE or TABLE after DROP");
+            if (MatchKeyword("USER")) {
+                auto stmt = std::make_unique<db::DropUserStatement>();
+                stmt->user_id = ParseIdentifier();
+                Finish();
+                return stmt;
+            }
+            if (MatchKeyword("GROUP")) {
+                auto stmt = std::make_unique<db::DropGroupStatement>();
+                stmt->group_name = ParseIdentifier();
+                Finish();
+                return stmt;
+            }
+            throw db::ParseError("expected DATABASE, TABLE, USER or GROUP after DROP");
         }
         if (MatchKeyword("USE")) {
             auto stmt = std::make_unique<db::UseDatabaseStatement>();
@@ -168,12 +186,40 @@ public:
         if (MatchKeyword("REVERT")) {
             return ParseRevert();
         }
+        if (MatchKeyword("LOGIN")) {
+            return ParseLogin();
+        }
+        if (MatchKeyword("GRANT")) {
+            return ParseGrant();
+        }
+        if (MatchKeyword("REVOKE")) {
+            return ParseRevoke();
+        }
+        if (MatchKeyword("ADD")) {
+            return ParseAddUserToGroup();
+        }
+        if (MatchKeyword("SUBMIT")) {
+            return ParseSubmitQuery();
+        }
+        if (MatchKeyword("GET")) {
+            return ParseGetTask();
+        }
+        if (MatchKeyword("CANCEL")) {
+            return ParseCancelTask();
+        }
+        if (MatchKeyword("SHOW")) {
+            if (MatchKeyword("METRICS")) {
+                Finish();
+                return std::make_unique<db::ShowMetricsStatement>();
+            }
+            throw db::ParseError("expected METRICS after SHOW");
+        }
         throw db::ParseError("unknown SQL command");
     }
 
 private:
-    // Recursive descent parser for the fixed course SQL subset.
-    // Precedence is kept explicit: OR -> AND -> predicate.
+    
+    
     bool At(db::TokenType type) const { return Peek().type == type; }
 
     const db::Token& Peek() const { return tokens_[pos_]; }
@@ -445,6 +491,125 @@ private:
             throw db::ParseError("expected timestamp in yyyy.mm.dd-hh:mm:ss.mmm format");
         }
         stmt->timestamp_ms = *timestamp_ms;
+        Finish();
+        return stmt;
+    }
+
+    
+
+    std::unique_ptr<db::SqlStatement> ParseCreateUser() {
+        auto stmt = std::make_unique<db::CreateUserStatement>();
+        stmt->user_id = ParseIdentifier();
+        ExpectKeyword("PASSWORD");
+        if (!At(db::TokenType::kString)) {
+            throw db::ParseError("expected quoted password string");
+        }
+        stmt->password = Consume().lexeme;
+        Finish();
+        return stmt;
+    }
+
+    std::unique_ptr<db::SqlStatement> ParseCreateGroup() {
+        auto stmt = std::make_unique<db::CreateGroupStatement>();
+        stmt->group_name = ParseIdentifier();
+        Finish();
+        return stmt;
+    }
+
+    std::unique_ptr<db::SqlStatement> ParseLogin() {
+        auto stmt = std::make_unique<db::LoginStatement>();
+        stmt->user_id = ParseIdentifier();
+        ExpectKeyword("PASSWORD");
+        if (!At(db::TokenType::kString)) {
+            throw db::ParseError("expected quoted password string");
+        }
+        stmt->password = Consume().lexeme;
+        Finish();
+        return stmt;
+    }
+
+    
+    std::unique_ptr<db::SqlStatement> ParseGrant() {
+        auto stmt = std::make_unique<db::GrantStatement>();
+        stmt->permission = Upper(ParseIdentifier());
+        
+        while (At(db::TokenType::kIdentifier) &&
+               Upper(Peek().lexeme) != "TO") {
+            stmt->permission += "_" + Upper(Consume().lexeme);
+        }
+        ExpectKeyword("TO");
+        if (MatchKeyword("USER")) {
+            stmt->target_type = "USER";
+        } else if (MatchKeyword("GROUP")) {
+            stmt->target_type = "GROUP";
+        } else {
+            throw db::ParseError("expected USER or GROUP after TO in GRANT");
+        }
+        stmt->target_name = ParseIdentifier();
+        Finish();
+        return stmt;
+    }
+
+    std::unique_ptr<db::SqlStatement> ParseRevoke() {
+        auto stmt = std::make_unique<db::RevokeStatement>();
+        stmt->permission = Upper(ParseIdentifier());
+        while (At(db::TokenType::kIdentifier) &&
+               Upper(Peek().lexeme) != "FROM") {
+            stmt->permission += "_" + Upper(Consume().lexeme);
+        }
+        ExpectKeyword("FROM");
+        if (MatchKeyword("USER")) {
+            stmt->target_type = "USER";
+        } else if (MatchKeyword("GROUP")) {
+            stmt->target_type = "GROUP";
+        } else {
+            throw db::ParseError("expected USER or GROUP after FROM in REVOKE");
+        }
+        stmt->target_name = ParseIdentifier();
+        Finish();
+        return stmt;
+    }
+
+    
+    std::unique_ptr<db::SqlStatement> ParseAddUserToGroup() {
+        ExpectKeyword("USER");
+        auto stmt = std::make_unique<db::AddUserToGroupStatement>();
+        stmt->user_id = ParseIdentifier();
+        ExpectKeyword("TO");
+        ExpectKeyword("GROUP");
+        stmt->group_name = ParseIdentifier();
+        Finish();
+        return stmt;
+    }
+
+    
+
+    
+    std::unique_ptr<db::SqlStatement> ParseSubmitQuery() {
+        ExpectKeyword("QUERY");
+        auto stmt = std::make_unique<db::SubmitQueryStatement>();
+        if (!At(db::TokenType::kString)) {
+            throw db::ParseError("expected quoted SQL string after SUBMIT QUERY");
+        }
+        stmt->inner_sql = Consume().lexeme;
+        Finish();
+        return stmt;
+    }
+
+    
+    std::unique_ptr<db::SqlStatement> ParseGetTask() {
+        ExpectKeyword("TASK");
+        auto stmt = std::make_unique<db::GetTaskStatement>();
+        stmt->request_id = ParseIdentifier();
+        Finish();
+        return stmt;
+    }
+
+    
+    std::unique_ptr<db::SqlStatement> ParseCancelTask() {
+        ExpectKeyword("TASK");
+        auto stmt = std::make_unique<db::CancelTaskStatement>();
+        stmt->request_id = ParseIdentifier();
         Finish();
         return stmt;
     }

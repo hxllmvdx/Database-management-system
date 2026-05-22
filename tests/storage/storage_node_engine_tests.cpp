@@ -470,4 +470,4 @@ TEST_F(StorageNodeEngineTest, RevertRestoresIndexesConsistentlyAndDoesNotAppendV
     ASSERT_EQ(after_revert.size(), before_revert.size());
 }
 
-}  // namespace
+}  

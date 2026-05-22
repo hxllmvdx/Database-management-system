@@ -24,6 +24,92 @@ target_link_libraries(coursedb_common
         coursedb_project_options
 )
 
+# ── coursedb_logging ─────────────────────────────────────────────────────────
+add_library(coursedb_logging STATIC)
+
+target_sources(coursedb_logging
+    PRIVATE
+        logging/logger.cpp
+)
+
+target_include_directories(coursedb_logging
+    PUBLIC
+        ${PROJECT_SOURCE_DIR}/include
+)
+
+target_link_libraries(coursedb_logging
+    PUBLIC
+        coursedb_common
+        nlohmann_json::nlohmann_json
+        coursedb_project_options
+)
+
+# ── coursedb_telemetry ────────────────────────────────────────────────────────
+add_library(coursedb_telemetry STATIC)
+
+target_sources(coursedb_telemetry
+    PRIVATE
+        telemetry/metrics.cpp
+)
+
+target_include_directories(coursedb_telemetry
+    PUBLIC
+        ${PROJECT_SOURCE_DIR}/include
+)
+
+target_link_libraries(coursedb_telemetry
+    PUBLIC
+        coursedb_common
+        coursedb_project_options
+)
+
+# ── coursedb_auth ─────────────────────────────────────────────────────────────
+add_library(coursedb_auth STATIC)
+
+target_sources(coursedb_auth
+    PRIVATE
+        auth/rbac.cpp
+        auth/jwt_auth.cpp
+)
+
+target_include_directories(coursedb_auth
+    PUBLIC
+        ${PROJECT_SOURCE_DIR}/include
+)
+
+target_link_libraries(coursedb_auth
+    PUBLIC
+        coursedb_common
+        coursedb_logging
+        nlohmann_json::nlohmann_json
+        jwt-cpp::jwt-cpp
+        OpenSSL::Crypto
+        OpenSSL::SSL
+        coursedb_project_options
+)
+
+# ── coursedb_queue ────────────────────────────────────────────────────────────
+add_library(coursedb_queue STATIC)
+
+target_sources(coursedb_queue
+    PRIVATE
+        queue/task_queue.cpp
+)
+
+target_include_directories(coursedb_queue
+    PUBLIC
+        ${PROJECT_SOURCE_DIR}/include
+)
+
+target_link_libraries(coursedb_queue
+    PUBLIC
+        coursedb_common
+        coursedb_logging
+        nlohmann_json::nlohmann_json
+        coursedb_project_options
+)
+
+# ── coursedb_storage ──────────────────────────────────────────────────────────
 add_library(coursedb_storage STATIC)
 
 target_sources(coursedb_storage
@@ -63,6 +149,7 @@ target_link_libraries(coursedb_storage
         coursedb_project_options
 )
 
+# ── coursedb_parser ───────────────────────────────────────────────────────────
 add_library(coursedb_parser STATIC)
 
 target_sources(coursedb_parser
@@ -86,6 +173,7 @@ target_link_libraries(coursedb_parser
         coursedb_project_options
 )
 
+# ── coursedb_planner ──────────────────────────────────────────────────────────
 add_library(coursedb_planner STATIC)
 
 target_sources(coursedb_planner
@@ -110,6 +198,7 @@ target_link_libraries(coursedb_planner
         coursedb_project_options
 )
 
+# ── coursedb_execution ────────────────────────────────────────────────────────
 add_library(coursedb_execution STATIC)
 
 target_sources(coursedb_execution
@@ -141,6 +230,7 @@ target_link_libraries(coursedb_execution
         coursedb_project_options
 )
 
+# ── coursedb_transaction ──────────────────────────────────────────────────────
 add_library(coursedb_transaction STATIC)
 
 target_sources(coursedb_transaction
@@ -163,6 +253,7 @@ target_link_libraries(coursedb_transaction
         coursedb_project_options
 )
 
+# ── coursedb_network ──────────────────────────────────────────────────────────
 add_library(coursedb_network STATIC)
 
 target_sources(coursedb_network
@@ -190,6 +281,31 @@ if(WIN32)
     target_link_libraries(coursedb_network PUBLIC ws2_32)
 endif()
 
+# ── coursedb_cluster ──────────────────────────────────────────────────────────
+add_library(coursedb_cluster STATIC)
+
+target_sources(coursedb_cluster
+    PRIVATE
+        cluster/consistent_hash.cpp
+        cluster/entrypoint.cpp
+)
+
+target_include_directories(coursedb_cluster
+    PUBLIC
+        ${PROJECT_SOURCE_DIR}/include
+)
+
+target_link_libraries(coursedb_cluster
+    PUBLIC
+        coursedb_common
+        coursedb_network
+        coursedb_logging
+        coursedb_telemetry
+        nlohmann_json::nlohmann_json
+        coursedb_project_options
+)
+
+# ── coursedb_server ───────────────────────────────────────────────────────────
 add_library(coursedb_server STATIC)
 
 target_sources(coursedb_server
@@ -215,5 +331,10 @@ target_link_libraries(coursedb_server
         coursedb_execution
         coursedb_transaction
         coursedb_network
+        coursedb_logging
+        coursedb_telemetry
+        coursedb_auth
+        coursedb_queue
+        nlohmann_json::nlohmann_json
         coursedb_project_options
 )

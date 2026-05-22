@@ -88,7 +88,7 @@ protected:
     db::Executor executor;
 };
 
-}  // namespace
+}  
 
 TEST_F(ExecutorCrudTest, ExecutesInsertSelectUpdateAndDelete) {
     InsertUser(1, "Ann");

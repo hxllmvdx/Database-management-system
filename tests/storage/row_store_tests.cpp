@@ -168,4 +168,4 @@ TEST_F(RowStoreTest, UpdateAndReopenPreserveState) {
     EXPECT_EQ(new_id, db::RowId{2});
 }
 
-}  // namespace
+}  

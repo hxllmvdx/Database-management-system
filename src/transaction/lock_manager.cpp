@@ -32,7 +32,7 @@ void ForgetTxnLockOwnership(std::unordered_map<std::uint64_t, std::unordered_set
     }
 }
 
-}  // namespace
+}  
 
 Status LockManager::LockShared(const Transaction& txn, RowId rid) {
     if (!CanAcquireLocks(txn)) {

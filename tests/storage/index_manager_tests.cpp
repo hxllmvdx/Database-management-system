@@ -143,4 +143,4 @@ TEST_F(IndexManagerTest, OversizedStringKeysAreRejectedByConfiguredPolicy) {
     EXPECT_EQ(status.code(), db::StatusCode::kInvalidArgument);
 }
 
-}  // namespace
+}  

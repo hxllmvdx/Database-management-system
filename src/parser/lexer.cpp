@@ -37,47 +37,59 @@ std::vector<db::Token> db::Lexer::Tokenize() {
             while (i < input_.size() && IsIdentifierPart(input_[i])) {
                 ++i;
             }
+            
+            
+            while (i < input_.size() && input_[i] == '-' &&
+                   i + 1 < input_.size() &&
+                   std::isalnum(static_cast<unsigned char>(input_[i + 1]))) {
+                ++i; 
+                while (i < input_.size() && IsIdentifierPart(input_[i])) {
+                    ++i;
+                }
+            }
             tokens.push_back({TokenType::kIdentifier, input_.substr(start, i - start)});
             continue;
         }
 
         if (std::isdigit(static_cast<unsigned char>(ch))) {
             const std::size_t start = i++;
-            bool timestamp_like = false;
+            bool identifier_like = false;
             while (i < input_.size()) {
                 const char c = input_[i];
-                if (std::isdigit(static_cast<unsigned char>(c))) {
+                if (std::isalnum(static_cast<unsigned char>(c))) {
+                    
+                    if (!std::isdigit(static_cast<unsigned char>(c))) {
+                        identifier_like = true;
+                    }
                     ++i;
                     continue;
                 }
                 if (c == '.' || c == '-' || c == ':') {
-                    timestamp_like = true;
+                    identifier_like = true;
                     ++i;
                     continue;
                 }
                 break;
             }
-            if (timestamp_like) {
+            if (identifier_like) {
                 tokens.push_back({TokenType::kIdentifier, input_.substr(start, i - start)});
                 continue;
-            }
-            while (i < input_.size() && std::isdigit(static_cast<unsigned char>(input_[i]))) {
-                ++i;
             }
             tokens.push_back({TokenType::kNumber, input_.substr(start, i - start)});
             continue;
         }
 
-        if (ch == '"') {
+        if (ch == '"' || ch == '\'') {
+            const char quote = ch;
             ++i;
             std::string literal;
-            while (i < input_.size() && input_[i] != '"') {
+            while (i < input_.size() && input_[i] != quote) {
                 if (input_[i] == '\\' && i + 1 < input_.size()) {
                     ++i;
                 }
                 literal.push_back(input_[i++]);
             }
-            if (i >= input_.size() || input_[i] != '"') {
+            if (i >= input_.size() || input_[i] != quote) {
                 throw ParseError("unterminated string literal");
             }
             ++i;

@@ -212,4 +212,4 @@ TEST_F(CatalogManagerTest, GetTableFailsForCorruptedMetadata) {
     EXPECT_FALSE(status.ok());
 }
 
-}  // namespace
+}  

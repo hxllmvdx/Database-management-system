@@ -244,4 +244,4 @@ TEST_F(PageManagerTest, ReopenExistingFilePreservesAllocatedPagesAndData) {
     EXPECT_EQ(second_read_page.data, second_data);
 }
 
-}  // namespace
+}  

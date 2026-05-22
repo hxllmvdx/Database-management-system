@@ -1,131 +1,203 @@
-#include "network/tcp_server.h"                         // интерфейс tcp-сервера
-#include <winsock2.h>                                   // winsock api
-#include <ws2tcpip.h>                                   // расширения winsock (inet_pton)
-#include <cstdint>                                      // uintptr_t
-#include "network/protocol.h"                           // сериализация сообщений
-#include "common/status.h"                              // статусы ошибок
+#include "network/tcp_server.h"
+
+#ifdef _WIN32
+#  include <winsock2.h>
+#  include <ws2tcpip.h>
+   using socket_t = SOCKET;
+   static constexpr socket_t kInvalidSocket = INVALID_SOCKET;
+#  define CLOSE_SOCKET(s) closesocket(s)
+#  define SOCK_ERR        SOCKET_ERROR
+#else
+#  include <arpa/inet.h>
+#  include <netinet/in.h>
+#  include <sys/socket.h>
+#  include <unistd.h>
+   using socket_t = int;
+   static constexpr socket_t kInvalidSocket = -1;
+#  define CLOSE_SOCKET(s) ::close(s)
+#  define SOCK_ERR        (-1)
+#endif
+
+#include <cstdint>
+#include <cstring>
+#include <thread>
+
+#include "network/protocol.h"
+#include "common/status.h"
 
 namespace db {
 
-namespace {                                             // анонимный namespace для хелперов
+namespace {
 
-bool SendAll(void* socket, const char* data, int len) { // отправка всех байт
-    SOCKET s = static_cast<SOCKET>(reinterpret_cast<uintptr_t>(socket)); // приводим void* к сокету
-    int sent = 0;                                       // сколько уже отправили
-    while (sent < len) {                                // пока не ушло всё
-        int r = send(s, data + sent, len - sent, 0);    // пытаемся отправить остаток
-        if (r == SOCKET_ERROR) return false;            // разрыв или ошибка
-        sent += r;                                      // сдвигаемся
-    }
-    return true;                                        // успешно отправлено
+bool PlatformInit() {
+#ifdef _WIN32
+    WSADATA wsa;
+    return WSAStartup(MAKEWORD(2, 2), &wsa) == 0;
+#else
+    return true;
+#endif
 }
 
-bool RecvAll(void* socket, char* data, int len) {       // приём всех байт
-    SOCKET s = static_cast<SOCKET>(reinterpret_cast<uintptr_t>(socket));
-    int received = 0;                                   // сколько получили
-    while (received < len) {                            // пока не набрали нужное количество
-        int r = recv(s, data + received, len - received, 0); // читаем остаток
-        if (r <= 0) return false;                       // соединение закрыто или ошибка
-        received += r;                                  // накапливаем
-    }
-    return true;                                        // весь блок прочитан
+void PlatformCleanup() {
+#ifdef _WIN32
+    WSACleanup();
+#endif
 }
 
-} // anonymous namespace
+bool SendAll(socket_t s, const char* data, int len) {
+    int sent = 0;
+    while (sent < len) {
+#ifdef _WIN32
+        int r = send(s, data + sent, len - sent, 0);
+        if (r == SOCK_ERR) return false;
+#else
+        ssize_t r = ::send(s, data + sent, static_cast<std::size_t>(len - sent), 0);
+        if (r <= 0) return false;
+#endif
+        sent += static_cast<int>(r);
+    }
+    return true;
+}
 
-TcpServer::TcpServer(std::string host, int port)        // конструктор
-    : host_(std::move(host)),                           // адрес биндинга
-      port_(port) {}                                    // порт прослушивания
+bool RecvAll(socket_t s, char* data, int len) {
+    int received = 0;
+    while (received < len) {
+#ifdef _WIN32
+        int r = recv(s, data + received, len - received, 0);
+        if (r <= 0) return false;
+#else
+        ssize_t r = ::recv(s, data + received, static_cast<std::size_t>(len - received), 0);
+        if (r <= 0) return false;
+#endif
+        received += static_cast<int>(r);
+    }
+    return true;
+}
 
-Status TcpServer::Start(Handler handler) {              // запуск сервера
-    WSADATA wsaData;                                    // структура инициализации
-    int wsa_result = WSAStartup(MAKEWORD(2, 2), &wsaData); // стартуем winsock
-    if (wsa_result != 0) {                              // не удалось
-        return Status::Error(StatusCode::kNetworkError, "WSAStartup failed"); // сообщаем
+}  
+
+TcpServer::TcpServer(std::string host, int port)
+    : host_(std::move(host)), port_(port) {}
+
+Status TcpServer::Start(Handler handler) {
+    if (!PlatformInit()) {
+        return Status::Error(StatusCode::kNetworkError, "socket platform init failed");
     }
 
-    SOCKET listen_socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP); // создаём сокет
-    if (listen_socket == INVALID_SOCKET) {              // ошибка создания
-        WSACleanup();                                   // гасим winsock
+    socket_t listen_fd = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (listen_fd == kInvalidSocket) {
+        PlatformCleanup();
         return Status::Error(StatusCode::kNetworkError, "socket creation failed");
     }
 
-    sockaddr_in addr{};                                 // структура адреса
-    addr.sin_family = AF_INET;                          // ipv4
-    addr.sin_port = htons(static_cast<u_short>(port_)); // порт в сетевом порядке
-    inet_pton(AF_INET, host_.c_str(), &addr.sin_addr);  // преобразуем строку в адрес
+    int opt = 1;
+    ::setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR,
+                 reinterpret_cast<const char*>(&opt), sizeof(opt));
 
-    if (bind(listen_socket, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == SOCKET_ERROR) { // биндинг
-        closesocket(listen_socket);                     // освобождаем сокет
-        WSACleanup();                                   // и winsock
-        return Status::Error(StatusCode::kNetworkError, "bind failed");
+    sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_port   = htons(static_cast<uint16_t>(port_));
+    if (::inet_pton(AF_INET, host_.c_str(), &addr.sin_addr) <= 0) {
+        CLOSE_SOCKET(listen_fd);
+        PlatformCleanup();
+        return Status::Error(StatusCode::kNetworkError, "invalid bind address: " + host_);
     }
 
-    if (listen(listen_socket, SOMAXCONN) == SOCKET_ERROR) { // начинаем слушать
-        closesocket(listen_socket);
-        WSACleanup();
+    if (::bind(listen_fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == SOCK_ERR) {
+        CLOSE_SOCKET(listen_fd);
+        PlatformCleanup();
+        return Status::Error(StatusCode::kNetworkError,
+                             "bind failed on " + host_ + ":" + std::to_string(port_));
+    }
+
+    if (::listen(listen_fd, SOMAXCONN) == SOCK_ERR) {
+        CLOSE_SOCKET(listen_fd);
+        PlatformCleanup();
         return Status::Error(StatusCode::kNetworkError, "listen failed");
     }
 
-    listen_socket_ = reinterpret_cast<void*>(listen_socket); // сохраняем как void*
-    running_ = true;                                    // флаг работы
+    listen_socket_ = reinterpret_cast<void*>(static_cast<uintptr_t>(listen_fd));
+    running_       = true;
 
-    thread_ = std::thread([this, handler]() {           // поток обработки соединений
-        while (running_.load()) {                       // пока не попросили остановиться
-            SOCKET client_socket = accept(static_cast<SOCKET>(reinterpret_cast<uintptr_t>(listen_socket_)), nullptr, nullptr); // ждём клиента
-            if (client_socket == INVALID_SOCKET) {      // accept прервали или ошибка
-                continue;                               // идём на следующую итерацию
+    thread_ = std::thread([this, handler]() {
+        const socket_t lfd =
+            static_cast<socket_t>(reinterpret_cast<uintptr_t>(listen_socket_));
+
+        while (running_.load(std::memory_order_relaxed)) {
+            sockaddr_in client_addr{};
+            socklen_t   client_len = sizeof(client_addr);
+            socket_t    client_fd  = ::accept(
+                lfd, reinterpret_cast<sockaddr*>(&client_addr), &client_len);
+
+            if (client_fd == kInvalidSocket) {
+                break;
             }
 
-            std::uint32_t req_len = 0;                  // длина входящего сообщения
-            if (!RecvAll(reinterpret_cast<void*>(client_socket), reinterpret_cast<char*>(&req_len), sizeof(req_len))) { // читаем 4 байта
-                closesocket(client_socket);             // не смогли — закрываем клиента
-                continue;
-            }
+            
+            std::thread([client_fd, handler, client_addr]() {
+                char remote_buf[INET_ADDRSTRLEN] = {};
+                ::inet_ntop(AF_INET, &client_addr.sin_addr,
+                            remote_buf, sizeof(remote_buf));
 
-            std::string req_data(req_len, '\0');        // буфер под тело запроса
-            if (!RecvAll(reinterpret_cast<void*>(client_socket), req_data.data(), static_cast<int>(req_len))) { // читаем тело
-                closesocket(client_socket);
-                continue;
-            }
+                std::uint32_t req_len = 0;
+                if (!RecvAll(client_fd,
+                             reinterpret_cast<char*>(&req_len),
+                             sizeof(req_len))) {
+                    CLOSE_SOCKET(client_fd);
+                    return;
+                }
 
-            Request req;                                // структура запроса
-            Response resp;                              // структура ответа
-            if (!Protocol::DeserializeRequest(req_data, &req)) { // не распарсилось
-                resp.ok = false;                        // ошибка десериализации
-                resp.error = "failed to deserialize request";
-            } else {
-                Session session;                        // транспортная сессия
-                session.client_id = req.request_id;     // используем request_id как client_id
-                session.remote_addr = host_;            // адрес сервера (упрощённо)
-                resp = handler(session, req);           // вызываем бизнес-логику
-            }
+                std::string req_data(req_len, '\0');
+                if (!RecvAll(client_fd, req_data.data(),
+                             static_cast<int>(req_len))) {
+                    CLOSE_SOCKET(client_fd);
+                    return;
+                }
 
-            std::string resp_data = Protocol::SerializeResponse(resp); // упаковываем ответ
-            std::uint32_t resp_len = static_cast<std::uint32_t>(resp_data.size()); // длина ответа
-            if (!SendAll(reinterpret_cast<void*>(client_socket), reinterpret_cast<const char*>(&resp_len), sizeof(resp_len))) { // заголовок
-                closesocket(client_socket);
-                continue;
-            }
-            SendAll(reinterpret_cast<void*>(client_socket), resp_data.data(), static_cast<int>(resp_data.size())); // тело
-            closesocket(client_socket);                 // закрываем соединение с клиентом
+                Request  req;
+                Response resp;
+                if (!Protocol::DeserializeRequest(req_data, &req)) {
+                    resp.ok    = false;
+                    resp.error = "failed to deserialize request";
+                } else {
+                    Session session;
+                    session.client_id   = req.request_id;
+                    session.remote_addr = std::string(remote_buf);
+                    resp = handler(session, req);
+                }
+
+                std::string   resp_data = Protocol::SerializeResponse(resp);
+                std::uint32_t resp_len =
+                    static_cast<std::uint32_t>(resp_data.size());
+                if (!SendAll(client_fd,
+                             reinterpret_cast<const char*>(&resp_len),
+                             sizeof(resp_len))) {
+                    CLOSE_SOCKET(client_fd);
+                    return;
+                }
+                SendAll(client_fd, resp_data.data(),
+                        static_cast<int>(resp_data.size()));
+                CLOSE_SOCKET(client_fd);
+            }).detach();
         }
     });
 
-    return Status::Ok();                                // сервер запущен
+    return Status::Ok();
 }
 
-Status TcpServer::Stop() {                              // остановка сервера
-    running_ = false;                                   // сигнал потоку
-    if (listen_socket_ != nullptr) {                    // если сокет жив
-        closesocket(static_cast<SOCKET>(reinterpret_cast<uintptr_t>(listen_socket_))); // закрываем — accept выйдет
-        listen_socket_ = nullptr;                       // обнуляем
+Status TcpServer::Stop() {
+    running_ = false;
+    if (listen_socket_ != nullptr) {
+        socket_t lfd =
+            static_cast<socket_t>(reinterpret_cast<uintptr_t>(listen_socket_));
+        CLOSE_SOCKET(lfd);
+        listen_socket_ = nullptr;
     }
-    if (thread_.joinable()) {                           // если поток ещё бежит
-        thread_.join();                                 // дожидаемся завершения
+    if (thread_.joinable()) {
+        thread_.join();
     }
-    WSACleanup();                                       // освобождаем winsock
-    return Status::Ok();                                // успешно остановлено
+    PlatformCleanup();
+    return Status::Ok();
 }
 
-} // namespace db
+}  

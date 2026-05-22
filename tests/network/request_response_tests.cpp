@@ -1,37 +1,37 @@
-#include <gtest/gtest.h>                              // gtest
-#include <thread>                                       // для sleep
-#include <chrono>                                       // миллисекунды
-#include "network/tcp_server.h"                         // тестируемый сервер
-#include "network/tcp_client.h"                         // тестируемый клиент
-#include "network/protocol.h"                           // для проверки содержимого
+#include <gtest/gtest.h>                              
+#include <thread>                                       
+#include <chrono>                                       
+#include "network/tcp_server.h"                         
+#include "network/tcp_client.h"                         
+#include "network/protocol.h"                           
 
-using namespace db;                                   // убираем префикс
+using namespace db;                                   
 
-TEST(Network, SmokeTest) {                            // базовый сетевой тест
-    TcpServer server("127.0.0.1", 17777);             // сервер на свободном порту
-    bool handler_called = false;                      // флаг вызова обработчика
-    Status start_status = server.Start([&handler_called](const Session& session, const Request& req) { // стартуем
-        handler_called = true;                        // отмечаем, что дошли
-        Response resp;                                // формируем ответ
-        resp.ok = true;                               // успех
+TEST(Network, SmokeTest) {                            
+    TcpServer server("127.0.0.1", 17777);             
+    bool handler_called = false;                      
+    Status start_status = server.Start([&handler_called](const Session& session, const Request& req) { 
+        handler_called = true;                        
+        Response resp;                                
+        resp.ok = true;                               
         resp.result.ok = true;
         resp.result.affected_rows = 1;
-        return resp;                                  // отдаём клиенту
+        return resp;                                  
     });
-    ASSERT_TRUE(start_status.ok()) << start_status.message(); // старт прошёл
+    ASSERT_TRUE(start_status.ok()) << start_status.message(); 
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(50)); // даём потоку дойти до accept
+    std::this_thread::sleep_for(std::chrono::milliseconds(50)); 
 
-    TcpClient client("127.0.0.1", 17777);             // клиент к тому же порту
-    Request req;                                      // тестовый запрос
-    req.sql = "select 1";                             // произвольный sql
-    req.request_id = "test-1";                        // идентификатор
-    Response resp;                                    // буфер ответа
-    Status send_status = client.Send(req, &resp);     // отправляем и получаем
-    ASSERT_TRUE(send_status.ok()) << send_status.message(); // сеть работает
-    EXPECT_TRUE(resp.ok);                             // ответ успешен
-    EXPECT_EQ(resp.result.affected_rows, 1u);         // содержимое не потерялось
-    EXPECT_TRUE(handler_called);                      // бизнес-логика вызвана
+    TcpClient client("127.0.0.1", 17777);             
+    Request req;                                      
+    req.sql = "select 1";                             
+    req.request_id = "test-1";                        
+    Response resp;                                    
+    Status send_status = client.Send(req, &resp);     
+    ASSERT_TRUE(send_status.ok()) << send_status.message(); 
+    EXPECT_TRUE(resp.ok);                             
+    EXPECT_EQ(resp.result.affected_rows, 1u);         
+    EXPECT_TRUE(handler_called);                      
 
-    server.Stop();                                    // очищаем ресурсы
+    server.Stop();                                    
 }

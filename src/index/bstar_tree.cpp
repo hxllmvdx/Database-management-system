@@ -79,7 +79,7 @@ std::optional<std::size_t> ChooseBalancedSplit(
     return best_index;
 }
 
-}  // namespace
+}  
 
 namespace db {
 

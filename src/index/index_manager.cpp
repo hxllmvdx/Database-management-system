@@ -157,4 +157,4 @@ Status IndexManager::RangeSearch(const std::string& index_name,
     return tree->RangeSearch(range, out);
 }
 
-}  // namespace db
+}  

@@ -161,4 +161,4 @@ TEST_F(BStarTreeTest, ManyInsertsAndDeletesKeepRemainingKeysReachableAfterReopen
     }
 }
 
-}  // namespace
+}  

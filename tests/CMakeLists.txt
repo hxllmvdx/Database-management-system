@@ -39,9 +39,7 @@ coursedb_add_test(coursedb_storage_tests
         storage/version_log_tests.cpp
         storage/storage_node_engine_tests.cpp
     LIBRARIES
-        coursedb_storage
         coursedb_execution
-        coursedb_common
 )
 
 coursedb_add_test(coursedb_parser_tests
@@ -51,7 +49,6 @@ coursedb_add_test(coursedb_parser_tests
         parser/ast_tests.cpp
     LIBRARIES
         coursedb_parser
-        coursedb_common
 )
 
 coursedb_add_test(coursedb_planner_tests
@@ -61,9 +58,6 @@ coursedb_add_test(coursedb_planner_tests
         planner/optimizer_tests.cpp
     LIBRARIES
         coursedb_planner
-        coursedb_parser
-        coursedb_storage
-        coursedb_common
 )
 
 coursedb_add_test(coursedb_execution_tests
@@ -76,10 +70,6 @@ coursedb_add_test(coursedb_execution_tests
         execution/expression_tests.cpp
     LIBRARIES
         coursedb_execution
-        coursedb_planner
-        coursedb_parser
-        coursedb_storage
-        coursedb_common
 )
 
 coursedb_add_test(coursedb_transaction_tests
@@ -88,8 +78,6 @@ coursedb_add_test(coursedb_transaction_tests
         transaction/lock_manager_tests.cpp
     LIBRARIES
         coursedb_transaction
-        coursedb_storage
-        coursedb_common
 )
 
 coursedb_add_test(coursedb_network_tests
@@ -98,7 +86,6 @@ coursedb_add_test(coursedb_network_tests
         network/request_response_tests.cpp
     LIBRARIES
         coursedb_network
-        coursedb_common
 )
 
 coursedb_add_test(coursedb_integration_tests
@@ -108,11 +95,40 @@ coursedb_add_test(coursedb_integration_tests
         integration/network_e2e_tests.cpp
     LIBRARIES
         coursedb_server
-        coursedb_execution
-        coursedb_planner
-        coursedb_parser
-        coursedb_storage
-        coursedb_transaction
-        coursedb_network
-        coursedb_common
+)
+
+coursedb_add_test(coursedb_auth_tests
+    SOURCES
+        auth/rbac_tests.cpp
+        auth/jwt_tests.cpp
+    LIBRARIES
+        coursedb_auth
+)
+
+coursedb_add_test(coursedb_queue_tests
+    SOURCES
+        queue/task_queue_tests.cpp
+    LIBRARIES
+        coursedb_queue
+)
+
+coursedb_add_test(coursedb_telemetry_tests
+    SOURCES
+        telemetry/metrics_tests.cpp
+    LIBRARIES
+        coursedb_telemetry
+)
+
+coursedb_add_test(coursedb_cluster_tests
+    SOURCES
+        cluster/consistent_hash_tests.cpp
+    LIBRARIES
+        coursedb_cluster
+)
+
+coursedb_add_test(coursedb_logging_tests
+    SOURCES
+        logging/logger_tests.cpp
+    LIBRARIES
+        coursedb_logging
 )

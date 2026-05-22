@@ -96,4 +96,4 @@ Status RevertService::ApplyInverseRecord(const std::string& db_name,
     return Status::Error(StatusCode::kInvalidArgument, "Unsupported version operation");
 }
 
-}  // namespace db
+}  

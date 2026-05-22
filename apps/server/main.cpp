@@ -1,41 +1,119 @@
-#include <iostream>                                     // консольный ввод/вывод
-#include <string>                                       // строки
-#include "common/config.h"                              // конфигурация сервера
-#include "server/database.h"                            // верхнеуровневая база
-#include "server/query_processor.h"                     // исполнитель sql
-#include "server/storage_service.h"                     // сетевой обработчик
-#include "network/tcp_server.h"                         // tcp-сервер
+#include <csignal>
+#include <cstring>
+#include <filesystem>
+#include <iostream>
+#include <string>
+#include <thread>
 
-int main(int argc, char* argv[]) {                      // точка входа серверного приложения
-    db::Config config;                                  // конфиг по умолчанию
-    if (argc > 1) config.host = argv[1];                // хост из аргументов
-    if (argc > 2) config.port = std::stoi(argv[2]);     // порт из аргументов
+#include "common/config.h"
+#include "logging/logger.h"
+#include "network/tcp_server.h"
+#include "server/database.h"
+#include "server/query_processor.h"
+#include "server/storage_service.h"
 
-    db::Database db(config);                            // создаём базу
-    db::Status status = db.Start();                     // стартуем движок и окружение
-    if (!status.ok()) {                                 // ошибка запуска
-        std::cerr << "failed to start database: " << status.message() << "\n"; // пишем в stderr
-        return 1;                                       // не нулевой код возврата
+namespace fs = std::filesystem;
+
+static volatile bool g_running = true;
+
+static void SignalHandler(int) { g_running = false; }
+
+static void PrintUsage(const char* argv0) {
+    std::cerr
+        << "Usage: " << argv0 << " [OPTIONS]\n"
+        << "\n"
+        << "Options:\n"
+        << "  --host <addr>      Listen address         (default: 127.0.0.1)\n"
+        << "  --port <n>         Listen port            (default: 7000)\n"
+        << "  --data <dir>       Root data directory    (default: ./data)\n"
+        << "                     Sub-dirs created automatically:\n"
+        << "                       <data>/wal          — write-ahead log\n"
+        << "                       <data>/task_queue   — async task WAL\n"
+        << "                       <data>/logs         — server + access logs\n"
+        << "                       <data>/rbac.json    — user/group store\n"
+        << "  --log-level <lvl>  trace|debug|info|warn|error (default: info)\n"
+        << "  --help             Show this help\n";
+}
+
+int main(int argc, char* argv[]) {
+    db::Config config;
+
+    // ── Parse CLI flags ────────────────────────────────────────────────────
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+
+        if (arg == "--help" || arg == "-h") {
+            PrintUsage(argv[0]);
+            return 0;
+        }
+
+        auto next = [&](const char* flag) -> std::string {
+            if (i + 1 >= argc) {
+                std::cerr << "error: " << flag << " requires a value\n";
+                std::exit(1);
+            }
+            return argv[++i];
+        };
+
+        if (arg == "--host")      { config.host      = next("--host"); }
+        else if (arg == "--port") { config.port      = std::stoi(next("--port")); }
+        else if (arg == "--data") {
+            const fs::path root    = next("--data");
+            config.data_dir        = root.string();
+            config.wal_dir         = (root / "wal").string();
+            config.task_queue_dir  = (root / "task_queue").string();
+            config.log_dir         = (root / "logs").string();
+        }
+        else if (arg == "--log-level") { config.log_level = next("--log-level"); }
+        else {
+            std::cerr << "error: unknown option '" << arg << "'\n";
+            PrintUsage(argv[0]);
+            return 1;
+        }
     }
 
-    db::QueryProcessor qp(&db);                         // процессор запросов привязан к базе
-    db::StorageService service(&qp);                    // сетевой сервис использует процессор
+    // ── Signals ────────────────────────────────────────────────────────────
+    std::signal(SIGINT,  SignalHandler);
+    std::signal(SIGTERM, SignalHandler);
 
-    db::TcpServer server(config.host, config.port);     // tcp-сервер на заданном адресе
-    status = server.Start([&service](const db::Session& session, const db::Request& req) { // лямбда-обработчик
-        return service.HandleRequest(session, req);     // делегируем storage service
-    });
-    if (!status.ok()) {                                 // не удалось занять порт
-        std::cerr << "failed to start server: " << status.message() << "\n";
-        db.Stop();                                      // гасим базу корректно
+    // ── Start subsystems ──────────────────────────────────────────────────
+    db::Database database(config);
+    db::Status   status = database.Start();
+    if (!status.ok()) {
+        std::cerr << "failed to start database: " << status.message() << "\n";
         return 1;
     }
 
-    std::cout << "server listening on " << config.host << ":" << config.port << "\n"; // успешный старт
-    std::cout << "press enter to stop...\n";            // ждём сигнала оператора
-    std::cin.get();                                     // блокируемся до enter
+    db::QueryProcessor qp(&database);
+    db::StorageService service(&qp, database.config());
 
-    server.Stop();                                      // останавливаем tcp
-    db.Stop();                                          // останавливаем движок
-    return 0;                                           // штатное завершение
+    db::TcpServer server(config.host, config.port);
+    status = server.Start([&service](const db::Session& sess,
+                                     const db::Request& req) {
+        return service.HandleRequest(sess, req);
+    });
+    if (!status.ok()) {
+        std::cerr << "failed to start server: " << status.message() << "\n";
+        database.Stop();
+        return 1;
+    }
+
+    db::Logger::Info("server ready",
+                     {{"host", config.host},
+                      {"port", std::to_string(config.port)},
+                      {"data", config.data_dir}});
+    std::cout << "CourseDB listening on " << config.host << ":" << config.port
+              << "  data=" << config.data_dir
+              << "  (Ctrl-C to stop)\n";
+
+    // ── Run loop ──────────────────────────────────────────────────────────
+    while (g_running) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    }
+
+    std::cout << "\nshutting down...\n";
+    server.Stop();
+    database.Stop();
+    db::Logger::Shutdown();
+    return 0;
 }
