@@ -6,6 +6,7 @@
    using socket_t = SOCKET;
    static constexpr socket_t kInvalidSocket = INVALID_SOCKET;
 #  define CLOSE_SOCKET(s) closesocket(s)
+#  define SHUTDOWN_SOCKET(s) shutdown((s), SD_BOTH)
 #  define SOCK_ERR        SOCKET_ERROR
 #else
 #  include <arpa/inet.h>
@@ -15,6 +16,7 @@
    using socket_t = int;
    static constexpr socket_t kInvalidSocket = -1;
 #  define CLOSE_SOCKET(s) ::close(s)
+#  define SHUTDOWN_SOCKET(s) ::shutdown((s), SHUT_RDWR)
 #  define SOCK_ERR        (-1)
 #endif
 
@@ -190,6 +192,7 @@ Status TcpServer::Stop() {
     if (listen_socket_ != nullptr) {
         socket_t lfd =
             static_cast<socket_t>(reinterpret_cast<uintptr_t>(listen_socket_));
+        SHUTDOWN_SOCKET(lfd);
         CLOSE_SOCKET(lfd);
         listen_socket_ = nullptr;
     }
